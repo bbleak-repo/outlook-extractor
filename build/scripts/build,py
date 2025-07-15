@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+BUILD_DIR = PROJECT_ROOT / "build"
+DIST_DIR = BUILD_DIR / "dist"
+SPEC_FILE = PROJECT_ROOT / "build" / "specs" / "outlook_extractor.spec"
+
+def clean_build():
+    """Remove previous build artifacts."""
+    print("Cleaning previous builds...")
+    if DIST_DIR.exists():
+        shutil.rmtree(DIST_DIR)
+    build_dir = PROJECT_ROOT / "build" / "outlook_extractor"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+
+def build_executable(onefile=True):
+    """Build the executable using PyInstaller."""
+    print("Building executable...")
+    cmd = [
+        "pyinstaller",
+        "--clean",
+        "--workpath", str(BUILD_DIR),
+        "--distpath", str(DIST_DIR),
+        "--specpath", str(SPEC_FILE.parent),
+        "--windowed",  # For GUI apps
+        "--icon", str(PROJECT_ROOT / "assets" / "app.ico"),  # Add your icon
+        "--add-data", f"{PROJECT_ROOT / 'outlook_extractor' / 'ui' / 'assets'}{os.pathsep}assets",
+        "--add-binary", f"{PROJECT_ROOT / 'venv' / 'Lib' / 'site-packages' / 'python_magic_bin'}{os.pathsep}python_magic_bin",
+        "--hidden-import", "email_validator",
+        "--hidden-import", "pydantic",
+        "--hidden-import", "PySimpleGUI",
+    ]
+    
+    if onefile:
+        cmd.append("--onefile")
+    
+    cmd.append(str(SPEC_FILE))
+    
+    subprocess.check_call(cmd)
+
+def main():
+    try:
+        clean_build()
+        build_executable(onefile=True)
+        print("Build completed successfully!")
+    except Exception as e:
+        print(f"Build failed: {e}")
+        return 1
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())

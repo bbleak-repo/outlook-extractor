@@ -1,0 +1,85 @@
+# Outlook Extractor - Build Instructions
+
+## Prerequisites
+- Python 3.8+
+- pip
+- PyInstaller: `pip install pyinstaller`
+- All project dependencies: `pip install -r requirements.txt`
+
+## Building the Executable
+
+### Unsigned Build (Development/Testing)
+```bash
+# Clean and build unsigned
+python build/scripts/build.py --clean
+```
+
+### Signed Build (Production)
+```bash
+# Clean and build with code signing
+python build/scripts/build.py --clean --sign-identity "Developer ID Application: Your Name (YOUR_TEAM_ID)"
+```
+
+### Build Options
+```
+--clean           Clean build artifacts before building
+--onefile         Create a single executable file (default: True)
+--sign-identity   Apple Developer ID for code signing (e.g., "Developer ID Application: Name (TEAM_ID)")
+--bundle-id       Bundle identifier (default: com.outlook.extractor)
+--spec-only       Only create the spec file, do not build
+```
+
+## Code Signing & Notarization (macOS)
+
+### Prerequisites
+1. Apple Developer ID Application certificate in Keychain
+2. App-specific password for notarization
+
+### Steps for Notarization
+
+1. **Build with signing identity** (as shown above)
+
+2. **Upload for notarization**:
+   ```bash
+   xcrun notarytool submit "build/dist/OutlookExtractor.zip" \
+       --apple-id "your@apple.id" \
+       --team-id "YOUR_TEAM_ID" \
+       --password "YOUR_APP_SPECIFIC_PASSWORD" \
+       --wait
+   ```
+
+3. **Staple the ticket** (after successful notarization):
+   ```bash
+   xcrun stapler staple "build/dist/OutlookExtractor.app"
+   ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Code Signing Fails**
+   - Verify the signing identity exists in Keychain
+   - Ensure you have the correct permissions
+
+2. **Notarization Fails**
+   - Check the notarization log for specific errors
+   - Ensure all binaries are signed with hardened runtime
+   - Verify entitlements are correctly set
+
+3. **App Won't Launch**
+   - Check Console.app for crash logs
+   - Verify all dependencies are included in the bundle
+
+## Build Artifacts
+
+- `build/build/`: Intermediate build files
+- `build/dist/`: Final output directory
+  - `OutlookExtractor`: Standalone executable (if --onefile)
+  - `OutlookExtractor.app/`: Application bundle
+  - `OutlookExtractor.zip`: Archive for notarization
+
+--clean           Clean build artifacts before building
+--onefile         Create a single executable file (default: True)
+--sign-identity   Apple Developer ID for code signing
+--bundle-id       Bundle identifier (default: com.outlook.extractor)
+--spec-only       Only create the spec file, do not build

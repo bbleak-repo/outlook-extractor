@@ -1,0 +1,13 @@
+# config/config.yaml (add these sections)
+export:
+  enable_csv: true
+  output_dir: ~/email_exports
+  file_prefix: emails_
+  export_basic: true
+  export_analysis: true
+  clean_bodies: true
+  include_summaries: true
+
+logging:
+  level: INFO
+  file: app.log

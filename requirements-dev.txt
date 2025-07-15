@@ -1,0 +1,41 @@
+# Development requirements
+-r requirements.txt
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Code formatting
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+flake8-docstrings>=1.7.0
+flake8-import-order>=0.18.2
+
+# Type checking
+mypy>=1.0.0
+types-python-dateutil>=2.8.19
+types-requests>=2.28.11
+types-pyyaml>=6.0.12
+
+# Documentation
+sphinx>=6.0.0
+sphinx-rtd-theme>=1.2.0
+sphinx-autodoc-typehints>=1.22.0
+
+# Build and release
+build>=0.10.0
+twine>=4.0.0
+wheel>=0.40.0
+
+# Pre-commit hooks
+pre-commit>=3.0.0
+
+# Jupyter for documentation
+jupyter>=1.0.0
+nbconvert>=7.0.0
+
+# Debugging
+ipdb>=0.13.9
+ipython>=8.0.0
