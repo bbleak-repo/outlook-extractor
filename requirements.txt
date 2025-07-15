@@ -40,3 +40,6 @@ sphinx-rtd-theme>=1.2.0  # ReadTheDocs theme
 python-dotenv>=1.0.0     # Environment variable management
 loguru>=0.7.0            # Enhanced logging
 click>=8.1.0             # Command line interface creation
+requests>=2.25.1
+packaging>=20.9
+semver>=2.13.0

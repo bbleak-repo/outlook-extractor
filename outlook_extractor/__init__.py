@@ -1,6 +1,11 @@
 # outlook_extractor/__init__.py
 import sys
 
+# Version information
+__version__ = "1.0.0"
+__author__ = "Your Name"
+__license__ = "MIT"
+
 # Define default values for all platforms
 OutlookClient = None
 EmailThread = None
@@ -9,6 +14,17 @@ SQLiteStorage = None
 JSONStorage = None
 OutlookExtractor = None
 ConfigManager = None
+
+# Import update functionality
+from .auto_updater import AutoUpdater, UpdateError
+from .ui.update_dialog import check_for_updates
+
+# Export update functionality
+__all__ = [
+    'OutlookClient', 'EmailThread', 'ThreadManager', 'SQLiteStorage',
+    'JSONStorage', 'OutlookExtractor', 'ConfigManager',
+    'AutoUpdater', 'UpdateError', 'check_for_updates'
+]
 get_config = None
 setup_logging = None
 CSVExporter = None

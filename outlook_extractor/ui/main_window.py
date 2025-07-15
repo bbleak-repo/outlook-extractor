@@ -22,12 +22,18 @@ from .export_tab import ExportTab
 from .export_tab import ExportTab as ExtractionTab
 
 class EmailExtractorUI:
-    def __init__(self, config_path: Optional[str] = None):
-        """Initialize the Email Extractor UI.
+    def __init__(self, config_path: str = None):
+        """Initialize the main window.
         
         Args:
-            config_path: Path to the configuration file. If None, will use default.
+            config_path: Path to the configuration file
         """
+        self.logger = get_logger(__name__)
+        self.logger.info("Initializing EmailExtractorUI")
+        
+        # Check for updates on startup (silently in the background)
+        self._check_for_updates(silent=True)
+        
         # Initialize logging first
         self._init_logging()
         
@@ -304,7 +310,7 @@ class EmailExtractorUI:
         menu_def = [
             ['&File', ['&Open Config', '&Save Config', '&Backup Config', '---', 'E&xit::exit']],
             ['&Tools', ['&Options', '&Backup Data']],
-            ['&Help', ['&About', '&Documentation']]
+            ['&Help', ['Check for &Updates', '&About', '&Documentation']]
         ]
         return sg.Menubar(menu_def, tearoff=False, key='-MENUBAR-')
     
@@ -1070,6 +1076,25 @@ class EmailExtractorUI:
             import webbrowser
             webbrowser.open('https://github.com/yourusername/outlook-extractor')
             
+    def _check_for_updates(self, silent: bool = False):
+        """Check for application updates.
+        
+        Args:
+            silent: If True, don't show any UI if no update is available
+        """
+        try:
+            from .. import check_for_updates
+            check_for_updates(
+                parent_window=self.window,
+                repo_owner="bbleak-repo",
+                repo_name="outlook-extractor",
+                silent=silent
+            )
+        except Exception as e:
+            self.logger.error(f"Error checking for updates: {e}", exc_info=True)
+            if not silent:
+                sg.popup_error(f"Error checking for updates: {e}", title="Update Error")
+            
     def run(self) -> None:
         """Run the main application loop."""
         try:
@@ -1254,6 +1279,9 @@ class EmailExtractorUI:
                     title='About'
                 )
             
+            elif event == 'Check for Updates':
+                self._check_for_updates()
+                
             elif event == 'Documentation':
                 import webbrowser
                 webbrowser.open('https://github.com/yourusername/outlook-extractor')
