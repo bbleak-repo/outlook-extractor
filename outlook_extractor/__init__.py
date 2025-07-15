@@ -1,8 +1,8 @@
 # outlook_extractor/__init__.py
 import sys
 
-# Version information
-__version__ = "1.0.0"
+# Version information (TEST VERSION - AUTO-UPDATE TESTING)
+__version__ = "1.0.0"  # This is a test version to verify auto-update
 __author__ = "Your Name"
 __license__ = "MIT"
 
