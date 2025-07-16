@@ -51,7 +51,7 @@ def main():
         
         if not is_windows:
             # Show a warning about limited functionality
-            import PySimpleGUI as sg
+            import FreeSimpleGUI as sg
             sg.popup(
                 "Running in Compatibility Mode",
                 "You are running Outlook Extractor on macOS. "
@@ -68,7 +68,7 @@ def main():
         
         # Show error to user if possible
         try:
-            import PySimpleGUI as sg
+            import FreeSimpleGUI as sg
             sg.popup_error(
                 f"Failed to start application: {str(e)}\n\n"
                 "Please check the log file for more details.",

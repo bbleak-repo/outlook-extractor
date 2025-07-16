@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 
 from outlook_extractor.logging_config import UILogHandler, get_logger
 

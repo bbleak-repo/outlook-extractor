@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, cast
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 from typing_extensions import Literal
 
 # Type aliases

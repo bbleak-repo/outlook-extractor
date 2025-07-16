@@ -2,7 +2,7 @@
 Update dialog for the Outlook Email Extractor application.
 """
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 from pathlib import Path
 import sys
 import logging

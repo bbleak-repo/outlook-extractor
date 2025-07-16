@@ -2,7 +2,7 @@
 
 import logging
 import os
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Set
 

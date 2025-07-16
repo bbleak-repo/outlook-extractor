@@ -5,7 +5,7 @@ This script creates a simple PySimpleGUI window with the ExportTab to test its f
 """
 import sys
 import os
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 from pathlib import Path
 from typing import Dict, Any
 

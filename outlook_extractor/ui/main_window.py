@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast, Union
 
-import PySimpleGUI as sg
+import FreeSimpleGUI as sg
 
 from outlook_extractor import __version__
 from outlook_extractor.config import ConfigManager, load_config, get_config
