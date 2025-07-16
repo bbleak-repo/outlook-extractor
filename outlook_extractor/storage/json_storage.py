@@ -4,9 +4,9 @@ JSON storage implementation for email data.
 import os
 import json
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Any, Set, Union
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, List, Any, Optional, Union, Set
 
 from ..config import get_config
 from .base import EmailStorage
@@ -30,8 +30,8 @@ class JSONStorage(EmailStorage):
             'threads': {},
             'metadata': {
                 'version': '1.0',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'updated_at': datetime.now(timezone.utc).isoformat(),
                 'email_count': 0
             }
         }
@@ -57,7 +57,7 @@ class JSONStorage(EmailStorage):
         """Save data to the JSON file."""
         try:
             # Update metadata
-            self.data['metadata']['updated_at'] = datetime.utcnow().isoformat()
+            self.data['metadata']['updated_at'] = datetime.now(timezone.utc).isoformat()
             self.data['metadata']['email_count'] = len(self.data['emails'])
             
             # Save to file atomically by writing to a temp file first
@@ -115,8 +115,8 @@ class JSONStorage(EmailStorage):
                         'end_date': email_data.get('sent_date') or email_data.get('received_date'),
                         'status': 'active',
                         'categories': set(email_data.get('categories', [])),
-                        'created_at': datetime.utcnow().isoformat(),
-                        'updated_at': datetime.utcnow().isoformat()
+                        'created_at': datetime.now(timezone.utc).isoformat(),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
                     }
                 
                 # Update thread information
@@ -146,7 +146,7 @@ class JSONStorage(EmailStorage):
                     else:
                         thread['categories'].add(email_data['categories'])
                 
-                thread['updated_at'] = datetime.utcnow().isoformat()
+                thread['updated_at'] = datetime.now(timezone.utc).isoformat()
             
             # Save the data
             self._save_data()

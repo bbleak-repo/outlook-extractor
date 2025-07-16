@@ -8,7 +8,16 @@ A cross-platform application for extracting and managing emails from Microsoft O
 - **Email Extraction**: Extract emails with various filtering options
 - **Threaded Conversations**: View and manage email threads
 - **Multiple Storage Backends**: SQLite and JSON support
-- **Advanced Export**: Export to CSV with customizable templates
+- **Advanced Export**: Export to multiple formats:
+  - **CSV**: Comma-separated values for spreadsheet applications
+  - **Excel**: Native Excel format with formatting
+  - **JSON**: Structured data format for programmatic use
+  - **PDF**: Professional reports with:
+    - Email content preservation
+    - Attachments listing
+    - Summary tables
+    - Page numbers and timestamps
+    - Custom styling and theming
 - **Data Security**: Secure handling of sensitive information
 - **Performance Optimized**: Lazy loading for better performance
 - **Modern UI**: Clean, responsive interface with theme support
@@ -57,6 +66,27 @@ For optimal performance on macOS:
 - If you encounter any UI issues, try running with the `--no-console` flag
 
 ## Usage
+
+### Exporting Emails
+
+You can export emails in multiple formats using the command line interface:
+
+```bash
+# Export to CSV
+python -m outlook_extractor.export --format csv --output emails.csv
+
+# Export to Excel
+python -m outlook_extractor.export --format excel --output emails.xlsx
+
+# Export to PDF (with summary)
+python -m outlook_extractor.export --format pdf --output emails.pdf --include-summary
+
+# Export to JSON
+python -m outlook_extractor.export --format json --output emails.json
+
+# Filter emails before exporting
+python -m outlook_extractor.export --format csv --output recent_emails.csv --after "2025-01-01" --sender "user@example.com"
+```
 
 ### Basic Usage
 Run the application:

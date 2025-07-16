@@ -1,218 +1,217 @@
-# outlook_extractor/export/csv_exporter.py
+"""CSV export functionality for Outlook Extractor.
+
+This module provides functionality to export email data to CSV format
+with proper field ordering and formatting according to the v10 specification.
+Supports batch processing, progress updates, and cancellation.
+"""
 import csv
-import re
+import json
 import logging
-import pandas as pd
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Optional
-from datetime import datetime
-import html
-import email
-from email import policy
-from email.parser import BytesParser
+from threading import Event
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
+from queue import Queue, Empty
+import pandas as pd
+
+from .. import constants
 
 logger = logging.getLogger(__name__)
 
 class CSVExporter:
-    """Handles the export of email data to CSV format with advanced text cleaning."""
+    """Handles the export of email data to CSV format.
     
-    def __init__(self, config=None):
-        self.config = config or {}
-        self._setup_regex_patterns()
+    This exporter ensures compatibility with the v10 specification while
+    providing robust error handling and performance optimizations.
+    """
+    
+    def __init__(self, config: Optional[dict] = None):
+        """Initialize the CSV exporter.
         
-    def export_emails(self, emails, output_file, include_headers=True, encoding='utf-8'):
-        """Export emails to a CSV file.
+        Args:
+            config: Optional configuration dictionary
+        """
+        self.config = config or {}
+        self.fields = constants.EXPORT_FIELDS_V1
+        self._setup_field_formatters()
+    
+    def _setup_field_formatters(self) -> None:
+        """Set up field formatters for CSV export."""
+        self._field_formatters = {}
+        
+        # Define default formatters for different field types
+        type_formatters = {
+            'string': str,
+            'number': str,
+            'boolean': lambda x: str(x).lower(),
+            'datetime': lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x) if x else '',
+            'list': lambda x: ';'.join(str(i) for i in x) if isinstance(x, list) else str(x or ''),
+            'dict': lambda x: json.dumps(x) if isinstance(x, dict) else str(x or ''),
+            'text': str
+        }
+        
+        # Set up formatters for each field
+        for field in constants.EXPORT_FIELDS_V1:
+            field_id = field['id']
+            field_type = field.get('type', 'string')
+            self._field_formatters[field_id] = type_formatters.get(field_type, str)
+            
+        # Set default fields if not already set
+        self.fields = [field['id'] for field in constants.EXPORT_FIELDS_V1]
+    
+    def export_emails(
+        self, 
+        emails: List[Dict[str, Any]], 
+        output_path: Union[str, Path],
+        include_headers: bool = True,
+        encoding: str = 'utf-8-sig',  # Use BOM for Excel compatibility
+        batch_size: int = 1000,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        cancel_event: Optional[Event] = None
+    ) -> Tuple[bool, str]:
+        """Export emails to a CSV file with batch processing and progress updates.
         
         Args:
             emails: List of email dictionaries to export
-            output_file: Path to the output CSV file
+            output_path: Path to the output CSV file
             include_headers: Whether to include headers in the CSV
             encoding: File encoding to use
+            batch_size: Number of emails to process in each batch
+            progress_callback: Optional callback function(processed: int, total: int)
+            cancel_event: Optional threading.Event to cancel the export
+            
+        Returns:
+            Tuple[bool, str]: (success, message) - success status and message
+        """
+        if not emails:
+            msg = "No emails to export"
+            logger.warning(msg)
+            return False, msg
+            
+        if cancel_event and cancel_event.is_set():
+            msg = "Export cancelled by user"
+            logger.info(msg)
+            return False, msg
+            
+        output_path = Path(output_path)
+        total_emails = len(emails)
+        processed = 0
+        temp_path = output_path.with_suffix('.tmp' + output_path.suffix)
+        
+        try:
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with temp_path.open('w', newline='', encoding=encoding) as f:
+                writer = csv.DictWriter(f, fieldnames=self.fields)
+                
+                if include_headers:
+                    # Use the 'name' from EXPORT_FIELDS_V1 for headers if available
+                    headers = {}
+                    for field in constants.EXPORT_FIELDS_V1:
+                        headers[field['id']] = field.get('name', field['id'])
+                    writer.writerow(headers)
+                
+                # Process emails in batches
+                for i in range(0, total_emails, batch_size):
+                    if cancel_event and cancel_event.is_set():
+                        msg = "Export cancelled by user"
+                        logger.info(msg)
+                        return False, msg
+                        
+                    batch = emails[i:i + batch_size]
+                    for email in batch:
+                        try:
+                            row = self._format_email_row(email)
+                            writer.writerow(row)
+                            processed += 1
+                            
+                            # Update progress every 10 emails or on last email
+                            if progress_callback and (processed % 10 == 0 or processed == total_emails):
+                                progress_callback(processed, total_emails)
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing email: {e}", exc_info=True)
+                            continue
+            
+            # Rename temp file to final name (atomic operation on most filesystems)
+            if temp_path.exists():
+                if output_path.exists():
+                    output_path.unlink()  # Remove existing file if it exists
+                temp_path.rename(output_path)
+            
+            msg = f"Successfully exported {processed} of {total_emails} emails to {output_path}"
+            logger.info(msg)
+            return True, msg
+            
+        except Exception as e:
+            error_msg = f"Error exporting emails: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            # Clean up temp file if it exists
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up temp file: {cleanup_error}")
+            
+            return False, error_msg
+    
+    def _format_email_row(self, email: Dict[str, Any]) -> Dict[str, str]:
+        """Format an email for CSV export.
+        
+        Args:
+            email: Email data to format
+            
+        Returns:
+            Formatted email data
+        """
+        formatted = {}
+        for field in self.fields:
+            formatter = self._field_formatters.get(field, str)
+            try:
+                # Handle nested fields (e.g., 'sender.email_address')
+                if '.' in field:
+                    parts = field.split('.')
+                    value = email
+                    for part in parts:
+                        if isinstance(value, dict):
+                            value = value.get(part, '')
+                        else:
+                            value = ''
+                            break
+                else:
+                    value = email.get(field, '')
+                
+                # Apply formatter if value is not None
+                if value is not None:
+                    formatted[field] = formatter(value)
+                else:
+                    formatted[field] = ''
+                    
+            except Exception as e:
+                logger.warning(f"Error formatting field '{field}': {e}")
+                formatted[field] = ''
+                
+        return formatted
+    
+    def export_to_file(
+        self, 
+        emails: List[Dict[str, Any]], 
+        output_path: Union[str, Path],
+        **kwargs
+    ) -> bool:
+        """Alias for export_emails for backward compatibility.
+        
+        Args:
+            emails: List of email dictionaries to export
+            output_path: Path to the output CSV file
+            **kwargs: Additional arguments to pass to export_emails
             
         Returns:
             bool: True if export was successful, False otherwise
         """
-        try:
-            if not emails:
-                logger.warning("No emails to export")
-                return False
-                
-            # Convert emails to a format suitable for CSV export
-            rows = []
-            for email_data in emails:
-                row = {
-                    'subject': email_data.get('subject', ''),
-                    'sender': email_data.get('sender', ''),
-                    'recipients': ', '.join(email_data.get('recipients', [])),
-                    'date': email_data.get('received_time', '').isoformat() if email_data.get('received_time') else '',
-                    'body': email_data.get('body', ''),
-                    'folder': email_data.get('folder', '')
-                }
-                rows.append(row)
-            
-            # Create directory if it doesn't exist
-            output_path = Path(output_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write to CSV
-            with open(output_file, 'w', newline='', encoding=encoding) as f:
-                if not rows:
-                    return False
-                    
-                fieldnames = list(rows[0].keys())
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                
-                if include_headers:
-                    writer.writeheader()
-                
-                for row in rows:
-                    writer.writerow(row)
-            
-            logger.info(f"Successfully exported {len(emails)} emails to {output_file}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to export emails to CSV: {e}", exc_info=True)
-            return False
-    
-    def _setup_regex_patterns(self):
-        """Initialize regex patterns for text cleaning."""
-        # Common email headers and footers to remove
-        self.patterns = {
-            'signature': re.compile(
-                r'(?is)'  # Global flags at the start
-                r'(?:'  # Start non-capturing group
-                r'--\s*\n.*|'  # Standard signature separator
-                r'^--\s*$.*|'  # Double dash separator
-                r'(?:^[^\n]*[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}.*)|'  # Email in signature
-                r'(?:^[^\n]*www\.[^\s]+\.[a-z]{2,}.*)|'  # URLs in signature
-                r'(?:^[^\n]*\b(?:phone|mobile|tel|fax)[^\n:]*:.*)|'  # Contact info
-                r'(?:^[^\n]*\b(?:regard|best|sincerely|cheers|thanks|thank you|br),?[^\n]*$)'  # Common closings
-                r')'  # End non-capturing group
-            ),
-            'quoted_text': re.compile(
-                r'(?m)'  # Global multiline flag at the start
-                r'(?:'  # Start non-capturing group
-                r'^>.*$|'  # Quoted text
-                r'^On .*? wrote:$|'  # Email client quote
-                r'^From:.*?$|'  # Email header
-                r'^To:.*?$|'  # Email header
-                r'^Sent:.*?$|'  # Email header
-                r'^Subject:.*?$'  # Email header
-                r')'  # End non-capturing group
-            ),
-            'whitespace': re.compile(r'\s+', re.UNICODE),
-            'html_tags': re.compile(r'<[^>]+>'),
-            'multiple_newlines': re.compile(r'\n{3,}'),
-            'trailing_whitespace': re.compile(r'[ \t]+$', re.MULTILINE),
-            'leading_whitespace': re.compile(r'^[ \t]+', re.MULTILINE),
-            'confidentiality_notice': re.compile(
-                r'(?is)confidential(?:ity)?(?: notice| statement| information).*?'
-                r'(?:unintended recipient|do not use|unauthorized use)'
-            )
-        }
-        
-    def clean_body(self, body: str, is_html: bool = False) -> str:
-        """Clean and normalize email body text."""
-        if not body:
-            return ""
-            
-        try:
-            # Convert to string if needed
-            if not isinstance(body, str):
-                body = str(body)
-                
-            # Remove HTML tags if present
-            if is_html:
-                body = self.patterns['html_tags'].sub(' ', body)
-                body = html.unescape(body)
-                
-            # Remove common email artifacts
-            body = self.patterns['quoted_text'].sub('', body)
-            body = self.patterns['signature'].sub('', body)
-            body = self.patterns['confidentiality_notice'].sub('', body)
-            
-            # Normalize whitespace
-            body = self.patterns['leading_whitespace'].sub('', body)
-            body = self.patterns['trailing_whitespace'].sub('', body)
-            body = self.patterns['multiple_newlines'].sub('\n\n', body)
-            body = body.strip()
-            
-            return body
-            
-        except Exception as e:
-            logger.error(f"Error cleaning email body: {str(e)}")
-            return body or ""
-
-    def extract_summary(self, body: str, max_sentences: int = 3) -> str:
-        """Extract a summary from the email body."""
-        if not body:
-            return ""
-            
-        # Split into sentences (naive approach - could be enhanced with NLTK)
-        sentences = re.split(r'(?<=[.!?])\s+', body)
-        return ' '.join(sentences[:max_sentences])
-
-    def export_emails_to_csv(
-        self,
-        emails: List[Dict],
-        output_path: str,
-        include_headers: bool = True
-    ) -> str:
-        """Export list of email dictionaries to CSV file."""
-        if not emails:
-            logger.warning("No emails provided for CSV export")
-            return ""
-            
-        try:
-            # Ensure output directory exists
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Define CSV fields
-            fields = [
-                'id', 'conversation_id', 'subject', 'sender', 'to_recipients',
-                'cc_recipients', 'bcc_recipients', 'sent_datetime', 'received_datetime',
-                'has_attachments', 'importance', 'is_read', 'body_preview',
-                'web_link', 'parent_folder', 'categories', 'clean_body', 'summary'
-            ]
-            
-            # Prepare data for CSV
-            rows = []
-            for email_data in emails:
-                row = {field: email_data.get(field, '') for field in fields}
-                
-                # Clean and process body
-                body = email_data.get('body', {}).get('content', '')
-                is_html = email_data.get('body', {}).get('contentType', '').lower() == 'html'
-                clean_body = self.clean_body(body, is_html)
-                summary = self.extract_summary(clean_body)
-                
-                # Update row with processed data
-                row.update({
-                    'clean_body': clean_body,
-                    'summary': summary,
-                    'to_recipients': '; '.join(email_data.get('toRecipients', [])),
-                    'cc_recipients': '; '.join(email_data.get('ccRecipients', [])),
-                    'bcc_recipients': '; '.join(email_data.get('bccRecipients', [])),
-                    'categories': '; '.join(email_data.get('categories', []))
-                })
-                
-                rows.append(row)
-            
-            # Write to CSV
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=fields)
-                if include_headers:
-                    writer.writeheader()
-                writer.writerows(rows)
-                
-            logger.info(f"Successfully exported {len(emails)} emails to {output_path}")
-            return str(output_path)
-            
-        except Exception as e:
-            logger.error(f"Error exporting emails to CSV: {str(e)}")
-            raise
+        return self.export_emails(emails, output_path, **kwargs)
 
     def export_subject_analysis(
         self,

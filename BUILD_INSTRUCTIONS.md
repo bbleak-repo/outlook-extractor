@@ -4,11 +4,14 @@ This document provides comprehensive instructions for building the Outlook Extra
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
 - [Building on Windows](#building-on-windows)
 - [Building on macOS](#building-on-macos)
 - [Code Signing & Notarization](#code-signing--notarization)
+- [Build Options](#build-options)
 - [Troubleshooting](#troubleshooting)
 - [Build Artifacts](#build-artifacts)
+- [Release Process](#release-process)
 
 ## Prerequisites
 
@@ -17,21 +20,57 @@ This document provides comprehensive instructions for building the Outlook Extra
 - pip (Python package manager)
 - Git
 - Virtual environment (recommended)
+- [Poetry](https://python-poetry.org/) for dependency management
 
 ### Platform-Specific Requirements
 
 #### Windows
 - Visual Studio Build Tools with C++ workload
 - Windows 10/11 SDK
+- [Git for Windows](https://git-scm.com/download/win) (recommended for better shell support)
 
 #### macOS
 - Xcode Command Line Tools
-- Python 3.8+ installed via Homebrew
+- Python 3.8+ (recommended to install via [Homebrew](https://brew.sh/))
 - Xcode (for code signing and notarization)
+- [Homebrew](https://brew.sh/) (recommended for package management)
+
+## Quick Start
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/outlook-extractor.git
+   cd outlook-extractor
+   ```
+
+2. Set up the development environment:
+   ```bash
+   # Install Poetry if not already installed
+   curl -sSL https://install.python-poetry.org | python3 -
+   
+   # Install project dependencies
+   poetry install
+   
+   # Activate the virtual environment
+   poetry shell
+   ```
+
+3. Build the application:
+   ```bash
+   # For development (no code signing)
+   python -m build.scripts.build
+   
+   # For production (with code signing on macOS)
+   python -m build.scripts.build --sign-identity "Developer ID Application: Your Name (XXXXXXXXXX)"
+   ```
+
+The built application will be available in the `build/dist` directory.
 
 ## Building on Windows
 
 ### 1. Set Up Environment
+
+#### Option 1: Using PowerShell
 ```powershell
 # Clone the repository
 git clone https://github.com/yourusername/outlook-extractor.git
@@ -39,29 +78,230 @@ cd outlook-extractor
 
 # Create and activate virtual environment
 python -m venv venv
-.\venv\Scripts\activate
+.\venv\Scripts\Activate.ps1
 
 # Install build dependencies
 pip install -r requirements.txt
-pip install pyinstaller
+pip install -r requirements-dev.txt
+```
+
+#### Option 2: Using Command Prompt
+```cmd
+:: Clone the repository
+git clone https://github.com/yourusername/outlook-extractor.git
+cd outlook-extractor
+
+:: Create and activate virtual environment
+python -m venv venv
+call venv\Scripts\activate.bat
+
+:: Install build dependencies
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ### 2. Build the Application
-```powershell
-# Development build (unsigned)
-python build/scripts/build.py --clean
 
-# Production build (signed)
-python build/scripts/build.py --clean --sign
+#### Development Build (Unsigned)
+```powershell
+# Build a single executable file
+python -m build.scripts.build --onefile
+
+# Or build a directory with all dependencies
+python -m build.scripts.build --onedir
 ```
 
-### 3. Run the Application
-```powershell
-# From source
-python -m outlook_extractor.run
+#### Production Build (Signed)
+For production builds on Windows, you'll need a code signing certificate. Once you have one:
 
-# From built executable
-.\dist\OutlookExtractor.exe
+```powershell
+# Sign the executable with your certificate
+$cert = Get-ChildItem -Path Cert:\CurrentUser\My -CodeSigningCert
+Set-AuthenticodeSignature -FilePath "path\to\executable.exe" -Certificate $cert
+```
+
+### 3. Create Desktop Shortcut (Optional)
+```powershell
+python -m build.scripts.create_shortcut
+```
+
+## Building on macOS
+
+### 1. Set Up Environment
+
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python and other dependencies
+brew install python@3.9
+brew install git
+
+# Clone the repository
+git clone https://github.com/yourusername/outlook-extractor.git
+cd outlook-extractor
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install build dependencies
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+### 2. Build the Application
+
+#### Development Build (Unsigned)
+```bash
+# Build a single executable file
+python -m build.scripts.build --onefile
+
+# Or build an application bundle
+python -m build.scripts.build --onedir
+```
+
+#### Production Build (Code Signed)
+```bash
+# Build and sign the application
+python -m build.scripts.build \
+  --onefile \
+  --sign-identity "Developer ID Application: Your Name (XXXXXXXXXX)" \
+  --bundle-id "com.yourcompany.outlook-extractor"
+```
+
+## Code Signing & Notarization (macOS)
+
+### Prerequisites
+1. Apple Developer Account
+2. App-Specific Password for notarization
+3. Developer ID Application certificate installed in Keychain
+
+### Steps
+
+1. **Build and Sign the Application**:
+   ```bash
+   python -m build.scripts.build \
+     --onefile \
+     --sign-identity "Developer ID Application: Your Name (XXXXXXXXXX)" \
+     --bundle-id "com.yourcompany.outlook-extractor"
+   ```
+
+2. **Notarize the Application**:
+   ```bash
+   # Create a ZIP file for notarization
+   ditto -c -k --keepParent "dist/OutlookExtractor.app" "dist/OutlookExtractor.zip"
+   
+   # Upload for notarization
+   xcrun altool --notarize-app \
+     --primary-bundle-id "com.yourcompany.outlook-extractor" \
+     --username "your-apple-id@example.com" \
+     --password "@keychain:AC_PASSWORD" \
+     --file "dist/OutlookExtractor.zip"
+   ```
+
+3. **Check Notarization Status**:
+   ```bash
+   xcrun altool --notarization-info <request-id> -u "your-apple-id@example.com"
+   ```
+
+4. **Staple the Ticket**:
+   ```bash
+   xcrun stapler staple "dist/OutlookExtractor.app"
+   ```
+
+## Build Options
+
+The build script supports several command-line options:
+
+```
+python -m build.scripts.build [options]
+
+Options:
+  --onefile           Create a single executable file (default)
+  --onedir            Create a directory with all dependencies
+  --clean             Clean build artifacts before building
+  --spec-only         Only create the spec file, do not build
+  --sign-identity ID  Apple Developer ID for code signing (macOS only)
+  --bundle-id ID      Bundle identifier for the application
+  --version VERSION   Set the application version
+  --help              Show this help message
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Windows
+- **Missing Visual C++ Build Tools**:
+  - Install Visual Studio Build Tools with C++ workload
+  - Or install the standalone build tools from Microsoft
+
+- **PyInstaller Fails**:
+  - Ensure all dependencies are installed
+  - Try running as Administrator
+  - Check for antivirus software blocking the build
+
+#### macOS
+- **Code Signing Errors**:
+  - Ensure the Developer ID certificate is installed in Keychain
+  - Check that the certificate is trusted for code signing
+  - Verify the certificate hasn't expired
+
+- **Notarization Issues**:
+  - Check the notarization log for specific errors
+  - Ensure all binaries are signed with the same team ID
+  - Verify the hardened runtime is enabled
+
+### Debugging
+
+To enable debug output during the build:
+
+```bash
+# Windows
+set PYINSTALLER_DEBUG=1
+python -m build.scripts.build
+
+# macOS/Linux
+PYINSTALLER_DEBUG=1 python -m build.scripts.build
+```
+
+## Build Artifacts
+
+- `build/`: Intermediate build files
+- `dist/`: Final output directory
+  - `OutlookExtractor` (Linux/macOS) or `OutlookExtractor.exe` (Windows)
+  - `OutlookExtractor.app/` (macOS app bundle)
+- `*.spec`: PyInstaller spec files (temporary)
+
+## Release Process
+
+1. Update the version number in `outlook_extractor/__init__.py`
+2. Update `CHANGELOG.md` with the changes
+3. Commit the changes with a message like "Bump version to X.Y.Z"
+4. Create a Git tag: `git tag -a vX.Y.Z -m "Version X.Y.Z"`
+5. Push the tag: `git push origin vX.Y.Z`
+6. Create a GitHub release with the changelog
+7. Upload the built artifacts to the release
+
+### Automated Builds
+
+This project includes GitHub Actions workflows for automated builds:
+
+- **CI**: Runs tests on push and pull requests
+- **Release**: Builds and publishes releases when a tag is pushed
+
+To trigger a manual build:
+
+1. Go to GitHub Actions
+2. Select the appropriate workflow
+3. Click "Run workflow"
+4. Select the branch and version
+5. Click "Run workflow"
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 ```
 
 ## Building on macOS

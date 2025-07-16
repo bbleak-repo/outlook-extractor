@@ -7,7 +7,7 @@ import platform
 import warnings
 
 # Version information
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Your Name"
 __license__ = "MIT"
 
@@ -26,7 +26,6 @@ OutlookExtractor = None
 ConfigManager = None
 get_config = None
 setup_logging = None
-CSVExporter = None
 AutoUpdater = None
 UpdateError = None
 check_for_updates = None

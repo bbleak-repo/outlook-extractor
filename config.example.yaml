@@ -1,0 +1,23 @@
+# Outlook Email Extractor Configuration
+# Copy this file to config.yaml and adjust as needed
+
+# Priority email addresses (mark as is_priority = true)
+priority_addresses:
+  - admin@example.com
+  - manager@example.com
+
+# Admin email addresses (mark as is_admin = true)
+admin_addresses:
+  - admin@example.com
+  - it-support@example.com
+
+# Default export settings
+export:
+  format: csv  # or json
+  include_headers: true
+  encoding: utf-8-sig  # For Excel compatibility
+
+# Logging settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: extractor.log  # Leave empty to log only to console
