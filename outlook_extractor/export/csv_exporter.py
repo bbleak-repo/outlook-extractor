@@ -20,25 +20,86 @@ class CSVExporter:
         self.config = config or {}
         self._setup_regex_patterns()
         
+    def export_emails(self, emails, output_file, include_headers=True, encoding='utf-8'):
+        """Export emails to a CSV file.
+        
+        Args:
+            emails: List of email dictionaries to export
+            output_file: Path to the output CSV file
+            include_headers: Whether to include headers in the CSV
+            encoding: File encoding to use
+            
+        Returns:
+            bool: True if export was successful, False otherwise
+        """
+        try:
+            if not emails:
+                logger.warning("No emails to export")
+                return False
+                
+            # Convert emails to a format suitable for CSV export
+            rows = []
+            for email_data in emails:
+                row = {
+                    'subject': email_data.get('subject', ''),
+                    'sender': email_data.get('sender', ''),
+                    'recipients': ', '.join(email_data.get('recipients', [])),
+                    'date': email_data.get('received_time', '').isoformat() if email_data.get('received_time') else '',
+                    'body': email_data.get('body', ''),
+                    'folder': email_data.get('folder', '')
+                }
+                rows.append(row)
+            
+            # Create directory if it doesn't exist
+            output_path = Path(output_file)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write to CSV
+            with open(output_file, 'w', newline='', encoding=encoding) as f:
+                if not rows:
+                    return False
+                    
+                fieldnames = list(rows[0].keys())
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                
+                if include_headers:
+                    writer.writeheader()
+                
+                for row in rows:
+                    writer.writerow(row)
+            
+            logger.info(f"Successfully exported {len(emails)} emails to {output_file}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to export emails to CSV: {e}", exc_info=True)
+            return False
+    
     def _setup_regex_patterns(self):
         """Initialize regex patterns for text cleaning."""
         # Common email headers and footers to remove
         self.patterns = {
             'signature': re.compile(
-                r'(?s)(?i)(--\s*\n.*|'  # Standard signature separator
+                r'(?is)'  # Global flags at the start
+                r'(?:'  # Start non-capturing group
+                r'--\s*\n.*|'  # Standard signature separator
                 r'^--\s*$.*|'  # Double dash separator
-                r'(?m)^[^\n]*[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}.*|'  # Email in signature
-                r'(?m)^[^\n]*www\.[^\s]+\.[a-z]{2,}.*|'  # URLs in signature
-                r'(?m)^[^\n]*\b(phone|mobile|tel|fax)[^\n:]*:.*|'  # Contact info
-                r'(?m)^[^\n]*\b(regard|best|sincerely|cheers|thanks|thank you|br),?[^\n]*$)'  # Common closings
+                r'(?:^[^\n]*[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}.*)|'  # Email in signature
+                r'(?:^[^\n]*www\.[^\s]+\.[a-z]{2,}.*)|'  # URLs in signature
+                r'(?:^[^\n]*\b(?:phone|mobile|tel|fax)[^\n:]*:.*)|'  # Contact info
+                r'(?:^[^\n]*\b(?:regard|best|sincerely|cheers|thanks|thank you|br),?[^\n]*$)'  # Common closings
+                r')'  # End non-capturing group
             ),
             'quoted_text': re.compile(
-                r'(?m)^>.*$|'  # Quoted text
-                r'(?m)^On .*? wrote:$|'  # Email client quote
-                r'(?m)^From:.*?$|'  # Email header
-                r'(?m)^To:.*?$|'  # Email header
-                r'(?m)^Sent:.*?$|'  # Email header
-                r'(?m)^Subject:.*?$'  # Email header
+                r'(?m)'  # Global multiline flag at the start
+                r'(?:'  # Start non-capturing group
+                r'^>.*$|'  # Quoted text
+                r'^On .*? wrote:$|'  # Email client quote
+                r'^From:.*?$|'  # Email header
+                r'^To:.*?$|'  # Email header
+                r'^Sent:.*?$|'  # Email header
+                r'^Subject:.*?$'  # Email header
+                r')'  # End non-capturing group
             ),
             'whitespace': re.compile(r'\s+', re.UNICODE),
             'html_tags': re.compile(r'<[^>]+>'),

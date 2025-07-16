@@ -50,10 +50,14 @@ def temp_config():
         """)
         config_path = f.name
     
+    # Yield the path to the config file
     yield config_path
-    # Cleanup
-    if os.path.exists(config_path):
+    
+    # Clean up the temporary file
+    try:
         os.unlink(config_path)
+    except Exception as e:
+        print(f"Warning: Could not delete temporary config file: {e}")
 
 @pytest.fixture
 def config_manager(temp_config):
@@ -63,13 +67,40 @@ def config_manager(temp_config):
 @pytest.fixture
 def temp_db():
     """Create a temporary SQLite database for testing."""
-    db_path = Path("test_emails.db")
-    yield str(db_path)
-    # Cleanup
-    if db_path.exists():
-        db_path.unlink()
+    import os
+    
+    # Create a temporary file
+    fd, path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    
+    # Create the database
+    storage = SQLiteStorage(path)
+    storage.initialize()
+    storage.close()
+    
+    # Yield the path to the test database
+    yield path
+    
+    # Clean up
+    try:
+        os.unlink(path)
+    except Exception as e:
+        print(f"Warning: Could not delete temporary database file: {e}")
 
 @pytest.fixture
 def temp_json():
     """Create a temporary JSON file for testing."""
-    json_path = Path("test_
+    import os
+    
+    # Create a temporary file
+    fd, path = tempfile.mkstemp(suffix='.json')
+    os.close(fd)
+    
+    # Yield the path to the test JSON file
+    yield path
+    
+    # Clean up
+    try:
+        os.unlink(path)
+    except Exception as e:
+        print(f"Warning: Could not delete temporary JSON file: {e}")

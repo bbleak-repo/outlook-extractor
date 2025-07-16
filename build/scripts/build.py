@@ -49,7 +49,7 @@ def clean_build():
 
 def create_spec_file():
     """Create or update the PyInstaller spec file."""
-    print(f"📝 Updating spec file: {SPEC_FILE}")
+    print(f"[UPDATE] Updating spec file: {SPEC_FILE}")
     
     # Get the absolute path to the project's Python files
     outlook_extractor_path = str(PROJECT_ROOT / 'outlook_extractor')
@@ -212,12 +212,12 @@ def build_executable(onefile=True, sign_identity=None):
         sign_identity (str, optional): Apple Developer ID for code signing. 
             If None, the build will be unsigned.
     """
-    print("🔨 Building executable...")
+    print("[BUILD] Building executable...")
     
     # Store original environment variables
     original_env = {}
     if sign_identity:
-        print(f"🔑 Code signing with identity: {sign_identity}")
+        print(f"[SIGN] Code signing with identity: {sign_identity}")
         # Save and set environment variables for code signing
         original_env = {
             'CODESIGN_ALLOCATE': os.environ.get('CODESIGN_ALLOCATE'),
@@ -226,13 +226,13 @@ def build_executable(onefile=True, sign_identity=None):
         os.environ['CODESIGN_ALLOCATE'] = '/usr/bin/codesign_allocate'
         os.environ['CODESIGN_IDENTITY'] = sign_identity
     else:
-        print("⚠️  Building unsigned application")
+        print("[UNSIGNED] Building unsigned application")
     
     # Ensure PyInstaller is installed
     try:
         import PyInstaller
     except ImportError:
-        print("Installing PyInstaller...")
+        print("[INSTALL] Installing PyInstaller...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
     
     # Create the spec file with the correct options
@@ -241,7 +241,7 @@ def build_executable(onefile=True, sign_identity=None):
     # Get the path to the main script
     main_script = PROJECT_ROOT / "outlook_extractor" / "__main__.py"
     if not main_script.exists():
-        print(f"❌ Error: Could not find main script at {main_script}")
+        print(f"[ERROR] Could not find main script at {main_script}")
         return False
     
     # Get the path to the assets directory
@@ -285,21 +285,21 @@ def build_executable(onefile=True, sign_identity=None):
         cmd.append(str(main_script.relative_to(PROJECT_ROOT)))
         
         # Run the build
-        print("🚀 Running PyInstaller...")
+        print("[RUN] Running PyInstaller...")
         print("   " + " ".join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd))
         
         subprocess.check_call(cmd, cwd=PROJECT_ROOT)
         
-        print("✅ Build completed successfully!")
+        print("[SUCCESS] Build completed successfully!")
         if onefile:
             exe_path = DIST_DIR / "OutlookExtractor"
         else:
             exe_path = DIST_DIR / "OutlookExtractor" / "OutlookExtractor"
-        print(f"📦 Executable location: {exe_path}")
+        print(f"[LOCATION] Executable location: {exe_path}")
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ Build failed with error code {e.returncode}")
+        print(f"[ERROR] Build failed with error code {e.returncode}")
         return False
     finally:
         # Change back to the original directory
@@ -307,33 +307,33 @@ def build_executable(onefile=True, sign_identity=None):
     
     try:
         # Run the build
-        print("🚀 Running PyInstaller...")
+        print("[RUN] Running PyInstaller...")
         print("   " + " ".join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd))
         
         subprocess.check_call(cmd)
         
-        print("✅ Build completed successfully!")
+        print("[SUCCESS] Build completed successfully!")
         if onefile:
             exe_path = DIST_DIR / "OutlookExtractor"
         else:
             exe_path = DIST_DIR / "OutlookExtractor" / "OutlookExtractor"
-        print(f"📦 Executable location: {exe_path}")
+        print(f"[LOCATION] Executable location: {exe_path}")
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ Build failed with error code {e.returncode}")
+        print(f"[ERROR] Build failed with error code {e.returncode}")
         return False
     
     # Run the build
-    print("🚀 Running PyInstaller...")
+    print("[RUN] Running PyInstaller...")
     print("   " + " ".join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd))
     
     try:
         subprocess.check_call(cmd)
-        print("✅ Build completed successfully!")
-        print(f"📦 Executable location: {DIST_DIR / 'OutlookExtractor'}")
+        print("[SUCCESS] Build completed successfully!")
+        print(f"[LOCATION] Executable location: {DIST_DIR / 'OutlookExtractor'}")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Build failed with error code {e.returncode}")
+        print(f"[ERROR] Build failed with error code {e.returncode}")
         sys.exit(1)
 
 def main():
@@ -416,12 +416,12 @@ def main():
                 os.environ['PYI_OSX_BUNDLE_INFO_PLIST'] = str(info_plist_path)
             
             if build_executable(onefile=args.onefile, sign_identity=args.sign_identity):
-                print("\n🎉 Build process completed!")
-                print(f"   Executable available at: {DIST_DIR / 'OutlookExtractor'}")
+                print("\n[SUCCESS] Build process completed!")
+                print(f"   [LOCATION] Executable available at: {DIST_DIR / 'OutlookExtractor'}")
                 
                 # Sign the app bundle if identity is provided
                 if args.sign_identity and (DIST_DIR / 'OutlookExtractor.app').exists():
-                    print("🔐 Signing application bundle...")
+                    print("[SIGN] Signing application bundle...")
                     try:
                         # Sign the app bundle
                         subprocess.check_call([
@@ -431,25 +431,25 @@ def main():
                             '--entitlements', str(PROJECT_ROOT / 'build' / 'entitlements.plist'),
                             str(DIST_DIR / 'OutlookExtractor.app')
                         ])
-                        print("✅ Application bundle signed successfully!")
+                        print("[SUCCESS] Application bundle signed successfully!")
                         
                         # Verify the signature
-                        print("🔍 Verifying code signature...")
+                        print("[VERIFY] Verifying code signature...")
                         subprocess.check_call([
                             'codesign', '--verify', '--verbose',
                             str(DIST_DIR / 'OutlookExtractor.app')
                         ])
                         
                         # Create a ZIP file for notarization
-                        print("📦 Creating archive for notarization...")
+                        print("[ZIP] Creating archive for notarization...")
                         zip_path = DIST_DIR / 'OutlookExtractor.zip'
                         subprocess.check_call([
                             'ditto', '-c', '-k', '--keepParent',
                             str(DIST_DIR / 'OutlookExtractor.app'),
                             str(zip_path)
                         ])
-                        print(f"✅ Archive created: {zip_path}")
-                        print("\n📝 Next steps for notarization:")
+                        print(f"[SUCCESS] Archive created: {zip_path}")
+                        print("\n[NOTARIZATION] Next steps for notarization:")
                         print("1. Upload for notarization:")
                         print(f"   xcrun altool --notarize-app --primary-bundle-id \"{args.bundle_id}\" \\")
                         print('   --username "YOUR_APPLE_ID_EMAIL" --password "@keychain:AC_PASSWORD" \\')
@@ -460,7 +460,7 @@ def main():
                         print(f"   xcrun stapler staple \"{DIST_DIR / 'OutlookExtractor.app'}\"")
                         
                     except subprocess.CalledProcessError as e:
-                        print(f"❌ Code signing failed: {e}")
+                        print(f"[ERROR] Code signing failed: {e}")
                         # Restore original environment
                         for k, v in original_env.items():
                             if v is not None:
@@ -477,13 +477,13 @@ def main():
                                 os.environ.pop(k, None)
                         
             else:
-                print("\n❌ Build failed!")
+                print("\n[ERROR] Build failed!")
                 sys.exit(1)
         else:
-            print("\n📝 Spec file created successfully!")
+            print("\n[SUCCESS] Spec file created successfully!")
         
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERROR] {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

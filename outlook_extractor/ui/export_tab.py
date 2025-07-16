@@ -532,21 +532,45 @@ class ExportTab:
                 self.logger.info(f'Export settings: {export_settings}')
 
                 try:
-                    # TODO: Call actual export function here
-                    # For now, simulate a successful export
-                    output_file = output_path / filename
+                    # Get the main application instance to access email data
+                    from outlook_extractor.main import get_application
+                    app = get_application()
                     
-                    # Create a dummy file to simulate export
-                    with open(output_file, 'w') as f:
-                        f.write('Email,Subject,Date,Sender,Recipients\n')
-                        f.write('example@domain.com,Test Export,2023-01-01,sender@domain.com,recipient@domain.com\n')
-
-                    success_msg = f'Successfully exported to:\n{output_file}'
+                    if not app or not hasattr(app, 'email_data') or not app.email_data:
+                        raise ValueError('No email data available for export. Please load emails first.')
+                    
+                    # Get the email data
+                    email_data = app.email_data
+                    
+                    # Initialize the CSV exporter
+                    from outlook_extractor.export.csv_exporter import CSVExporter
+                    exporter = CSVExporter(self.config)
+                    
+                    # Prepare export settings
+                    export_settings = {
+                        'clean_bodies': values.get('-CLEAN_BODIES-', True),
+                        'include_summaries': values.get('-INCLUDE_SUMMARIES-', True)
+                    }
+                    
+                    # Update the UI to show export in progress
+                    if self.window:
+                        self.window['-EXPORT_CSV_BUTTON-'].update(disabled=True, text='Exporting...')
+                        self.window.refresh()
+                    
+                    # Export to CSV
+                    output_file = output_path / filename
+                    export_path = exporter.export_emails_to_csv(
+                        emails=email_data,
+                        output_path=str(output_file),
+                        include_headers=True
+                    )
+                    
+                    success_msg = f'Successfully exported {len(email_data)} emails to:\n{export_path}'
                     self.logger.info(success_msg)
                     
                     # Show success message
                     self._show_info_popup(success_msg, 'Export Complete')
-
+                    
                 except Exception as e:
                     error_msg = f'Export failed: {str(e)}'
                     self.logger.error(error_msg, exc_info=True)
@@ -560,6 +584,11 @@ class ExportTab:
                     )
                     
                     self._show_error_popup(error_details, 'Export Failed')
+                finally:
+                    # Re-enable the export button
+                    if self.window:
+                        self.window['-EXPORT_CSV_BUTTON-'].update(disabled=False, text='Export to CSV')
+                        self.window.refresh()
 
                 return True
 

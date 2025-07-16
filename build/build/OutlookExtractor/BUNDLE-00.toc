@@ -1,0 +1,3 @@
+([('OutlookExtractor',
+   '/Users/xand/Documents/outlook-extract/build/dist/OutlookExtractor',
+   'EXECUTABLE')],)

@@ -1297,6 +1297,10 @@ class EmailExtractorUI:
                         self.logger.error(f'Error handling export event {event}: {str(e)}', exc_info=True)
                         sg.popup_error(f'Error in export tab: {str(e)}', title='Export Error')
             
+            # Handle run button click
+            if event == '-RUN-':
+                self._handle_run_event(values)
+            
         except Exception as e:
             self.logger.error(f'Error handling event {event}: {str(e)}', exc_info=True)
             sg.popup_error(f'Error: {str(e)}', title='Error')

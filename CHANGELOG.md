@@ -5,7 +5,33 @@ All notable changes to the Outlook Email Extractor project will be documented in
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2025-07-16
+
+### Added
+- Implement batch processing for improved performance with large email volumes
+- Add robust error handling and detailed logging throughout the extraction process
+- Enhance email processing with better validation and normalization
+- Add support for priority and admin email flags
+- Improve thread handling and email metadata extraction
+- Optimize folder matching logic with better pattern support
+- Add comprehensive input validation for all public methods
+- Implement proper resource cleanup and connection management
+- Add detailed performance metrics and logging
+- Improve test coverage with mock-based tests
+
+### Changed
+- Refactored core extraction logic for better maintainability
+- Improved memory management for large email batches
+- Enhanced error messages and user feedback
+- Updated dependencies to latest stable versions
+
+### Fixed
+- Fixed issues with special character handling in email subjects and bodies
+- Resolved threading issues in the UI during long-running operations
+- Fixed memory leaks in the storage backends
+- Addressed cross-platform compatibility issues
+
+## [1.0.0] - 2025-07-14
 
 ## [1.1.0] - 2025-07-15
 

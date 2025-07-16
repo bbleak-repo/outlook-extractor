@@ -131,6 +131,49 @@ class OutlookClient:
             
         return matching_folders
     
+    def get_all_folders(self) -> List[Any]:
+        """Get all folders from the Outlook account.
+        
+        Returns:
+            List of folder objects
+        """
+        try:
+            if not self.namespace:
+                self.connect()
+                
+            folders = []
+            self._collect_folders_recursive(self.account, folders)
+            return folders
+        except Exception as e:
+            self.logger.error(f"Error getting all folders: {e}")
+            return []
+            
+    def _collect_folders_recursive(self, folder, folder_list: List[Any], current_path: str = "") -> None:
+        """Recursively collect all subfolders.
+        
+        Args:
+            folder: Current folder object
+            folder_list: List to collect folders in
+            current_path: Current folder path (used internally for recursion)
+        """
+        try:
+            # Add the current folder to the list
+            if hasattr(folder, 'Name'):
+                folder_list.append(folder)
+                
+            # Recursively process subfolders
+            if hasattr(folder, 'Folders'):
+                for subfolder in folder.Folders:
+                    try:
+                        self._collect_folders_recursive(subfolder, folder_list, 
+                                                     f"{current_path}/{folder.Name}" if current_path else folder.Name)
+                    except Exception as e:
+                        self.logger.warning(f"Error processing subfolder: {e}")
+                        continue
+                        
+        except Exception as e:
+            self.logger.error(f"Error in _collect_folders_recursive: {e}")
+
     def _get_all_folders(self, folder=None, current_path="") -> List[Tuple[Any, str]]:
         """Recursively get all folders in the mailbox.
         

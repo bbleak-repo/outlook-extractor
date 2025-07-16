@@ -291,9 +291,27 @@ def load_config(config_path: str = None) -> ConfigManager:
     """Load configuration from a file and return a ConfigManager instance.
     
     Args:
-        config_path: Path to the configuration file.
+        config_path: Path to the configuration file. If None, uses the default config.
         
     Returns:
         A ConfigManager instance with the loaded configuration.
     """
-    return ConfigManager(config_path)
+    config = ConfigManager()
+    
+    # If no config path provided, use the default location
+    if config_path is None:
+        default_config_path = os.path.join(os.path.expanduser('~'), '.outlook_extractor', 'config.ini')
+        if os.path.exists(default_config_path):
+            config_path = default_config_path
+    
+    # Load the config if a valid path was provided or found
+    if config_path and os.path.exists(config_path):
+        try:
+            config.load_config(config_path)
+            logger = logging.getLogger(__name__)
+            logger.info(f"Loaded configuration from {config_path}")
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error loading configuration from {config_path}: {e}")
+    
+    return config

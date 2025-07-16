@@ -151,3 +151,13 @@ config.ini
 output/
 attachments/
 images/
+
+# Build artifacts
+build/dist/
+build/*.exe
+build/*.msi
+build/*.zip
+
+# Keep build scripts and specs
+!build/scripts/
+!build/specs/

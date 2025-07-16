@@ -28,6 +28,11 @@ class SQLiteStorage(EmailStorage):
         self.db_path = db_path or self.config.get('storage', 'db_path', 'emails.db')
         self.conn = None
         self._ensure_db()
+        
+    @property
+    def file_path(self) -> str:
+        """Get the path to the database file."""
+        return self.db_path
     
     def _ensure_db(self) -> None:
         """Ensure the database and tables exist."""

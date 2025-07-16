@@ -44,7 +44,7 @@ class OutlookExtractor:
         self.storage = None
         self.thread_manager = ThreadManager()
         self.csv_exporter = CSVExporter(self.config)
-        self.ui = EmailExtractorUI(self)
+        self.ui = EmailExtractorUI(config_path=config_path)  # Pass config_path instead of self
         
         # Initialize storage
         self._init_storage()
