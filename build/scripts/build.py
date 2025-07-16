@@ -99,6 +99,7 @@ a = Analysis(
         'email.charset',
         'email.header',
         'email.message',
+        'semver',
         'email.policy',
         'email._parseaddr',
         'email._policybase',

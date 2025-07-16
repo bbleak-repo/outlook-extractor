@@ -270,25 +270,38 @@ class ExportTab:
                 self.logger.debug('Creating UI layout...')
                 try:
                     self.logger.debug('Creating CSV export section...')
-                    # CSV export options - Each row must be a separate list
+                    # CSV export options - Simplified layout for better macOS compatibility
                     csv_section = [
                         [sg.Checkbox('Enable CSV Export',
                                    default=enable_csv,
                                    key='-EXPORT_CSV-',
-                                   enable_events=True)],
-                        [sg.Text('CSV Output Directory:', size=(18, 1)),
+                                   enable_events=True,
+                                   pad=(10, (10, 5)))
+                        ],
+                        [sg.Text('Output Directory:', size=(15, 1), pad=(10, (10, 5))),
                          sg.In(default_text=output_dir,
                                key='-CSV_OUTPUT_DIR-',
                                disabled=not enable_csv,
-                               size=(40, 1)),
+                               size=(45, 1),
+                               pad=(0, (10, 5))),
                          sg.FolderBrowse(disabled=not enable_csv,
-                                        key='-CSV_BROWSE-',
-                                        initial_folder=output_dir)],
-                        [sg.Text('CSV Filename:', size=(18, 1)),
+                                      key='-CSV_BROWSE-',
+                                      initial_folder=output_dir,
+                                      size=(10, 1),
+                                      pad=(5, (10, 5)))
+                        ],
+                        [sg.Text('Filename:', size=(15, 1), pad=(10, (5, 10))),
                          sg.In(default_text='emails_export.csv',
                                key='-CSV_PREFIX-',
                                disabled=not enable_csv,
-                               size=(40, 1))]
+                               size=(45, 1),
+                               pad=(0, (5, 10))),
+                         sg.Button('Generate',
+                                 key='-GENERATE_FILENAME-',
+                                 disabled=not enable_csv,
+                                 size=(10, 1),
+                                 pad=(5, (5, 10)))
+                        ]
                     ]
 
                     # Validate CSV section layout
@@ -297,29 +310,33 @@ class ExportTab:
                         raise ValueError("CSV section layout validation failed")
                     self.logger.debug('CSV export section created and validated successfully')
 
-                    # Export options - Each row must be a separate list
-                    # THIS IS THE CRITICAL FIX - proper list structure for each row
+                    # Export options - Simplified for macOS compatibility
                     self.logger.debug('Creating export options section...')
+                    # Create a simpler single-column layout for better macOS compatibility
                     export_options = [
-                        [sg.Text('Export Types:', font=('Helvetica', 10, 'bold'))],
+                        [sg.Text('Export Options:', 
+                               font=('Helvetica', 10, 'bold'), 
+                               pad=(10, (10, 5)))],
                         [sg.Checkbox('Basic Email Data',
                                    default=True,
                                    key='-EXPORT_BASIC-',
-                                   disabled=not enable_csv),
-                         sg.VerticalSeparator(),
-                         sg.Checkbox('Analysis Data',
+                                   disabled=not enable_csv,
+                                   pad=(15, (5, 5)))],
+                        [sg.Checkbox('Analysis Data',
                                    default=True,
                                    key='-EXPORT_ANALYSIS-',
-                                   disabled=not enable_csv)],
+                                   disabled=not enable_csv,
+                                   pad=(15, (5, 5)))],
                         [sg.Checkbox('Clean HTML from Email Bodies',
                                    default=clean_bodies,
                                    key='-CLEAN_BODIES-',
-                                   disabled=not enable_csv),
-                         sg.VerticalSeparator(),
-                         sg.Checkbox('Include AI Summaries',
+                                   disabled=not enable_csv,
+                                   pad=(15, (5, 5)))],
+                        [sg.Checkbox('Include AI Summaries',
                                    default=include_summaries,
                                    key='-INCLUDE_SUMMARIES-',
-                                   disabled=not enable_csv)]
+                                   disabled=not enable_csv,
+                                   pad=(15, (5, 5)))]
                     ]
 
                     # Validate export options layout
@@ -328,35 +345,46 @@ class ExportTab:
                         raise ValueError("Export options layout validation failed")
                     self.logger.debug('Export options section created and validated successfully')
 
-                    # Assemble the main layout
+                    # Assemble the main layout with better spacing for macOS
                     self.logger.debug('Assembling main layout...')
+                    
                     # Create the main layout as a list of rows
                     main_layout = [
-                        # Header row
-                        [sg.Text('Export Options', font=('Helvetica', 14, 'bold'))],
-                        [sg.HorizontalSeparator()],
-                        # CSV Export Settings Frame
+                        # Header row with padding
+                        [sg.Text('Export Options', 
+                               font=('Helvetica', 16, 'bold'), 
+                               pad=(10, (10, 15)))],
+                        
+                        # CSV Export Settings Frame with padding
                         [sg.Frame('CSV Export Settings',
-                                 layout=csv_section,
-                                 expand_x=True,
-                                 pad=(5, 5),
-                                 border_width=1)],
-                        # Horizontal separator
-                        [sg.HorizontalSeparator(pad=((5, 5), (15, 15)))],
-                        # Export Options Frame
+                                layout=csv_section,
+                                expand_x=True,
+                                pad=(10, 5),
+                                title_location='n',
+                                relief=sg.RELIEF_GROOVE)],
+                        
+                        # Export Options Frame with padding
                         [sg.Frame('Export Options',
-                                 layout=export_options,
-                                 expand_x=True,
-                                 pad=(5, 5),
-                                 border_width=1)],
+                                layout=export_options,
+                                expand_x=True,
+                                pad=(10, 10),
+                                title_location='n',
+                                relief=sg.RELIEF_GROOVE)],
+                        
                         # Button row with padding and centering
+                        [sg.Text('', size=(1, 1))],  # Vertical spacer
+                        [sg.HorizontalSeparator()],
+                        [sg.Text('', size=(1, 1))],  # Vertical spacer
                         [sg.Push(),
                          sg.Button('Export to CSV',
-                                  key='-EXPORT_CSV_BUTTON-',
-                                  size=(15, 2),
-                                  pad=((0, 0), (15, 10)),
-                                  disabled=not enable_csv),
-                         sg.Push()]
+                                 key='-EXPORT_CSV_BUTTON-',
+                                 size=(20, 2),
+                                 font=('Helvetica', 11, 'bold'),
+                                 button_color=('white', '#0078D7'),
+                                 pad=(0, (15, 10)),
+                                 disabled=not enable_csv),
+                         sg.Push()],
+                        [sg.Text('', size=(1, 1))]  # Vertical spacer
                     ]
 
                     # Validate main layout structure
@@ -623,16 +651,73 @@ class ExportTab:
                 'Critical UI Error'
             )
 
-    def get_export_settings(self, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Get the current export settings from the UI values."""
-        return {
-            'export': {
-                'enable_csv': values.get('-EXPORT_CSV-', False),
-                'output_dir': values.get('-CSV_OUTPUT_DIR-', str(Path.home() / 'email_exports')),
-                'file_prefix': values.get('-CSV_PREFIX-', 'emails_'),
-                'export_basic': values.get('-EXPORT_BASIC-', True),
-                'export_analysis': values.get('-EXPORT_ANALYSIS-', True),
-                'clean_bodies': values.get('-CLEAN_BODIES-', True),
-                'include_summaries': values.get('-INCLUDE_SUMMARIES-', True)
+    def get_export_settings(self, values: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Get the current export settings from the UI values.
+        
+        Args:
+            values: Dictionary containing UI element values from PySimpleGUI
+            
+        Returns:
+            Dictionary containing export settings with the following structure:
+            {
+                'export': {
+                    'enable_csv': bool,
+                    'output_dir': str,
+                    'file_prefix': str,
+                    'export_basic': bool,
+                    'export_analysis': bool,
+                    'clean_bodies': bool,
+                    'include_summaries': bool
+                }
             }
-        }
+            
+        Raises:
+            ValueError: If values is None or empty
+            TypeError: If values is not a dictionary
+        """
+        if not values:
+            self.logger.warning('Empty values dictionary provided, using defaults')
+            values = {}
+            
+        if not isinstance(values, dict):
+            error_msg = f'Expected dictionary for values, got {type(values).__name__}'
+            self.logger.error(error_msg)
+            raise TypeError(error_msg)
+            
+        try:
+            # Get values with type conversion and validation
+            settings = {
+                'export': {
+                    'enable_csv': bool(values.get('-EXPORT_CSV-', False)),
+                    'output_dir': str(values.get(
+                        '-CSV_OUTPUT_DIR-', 
+                        str(Path.home() / 'email_exports')
+                    )),
+                    'file_prefix': str(values.get('-CSV_PREFIX-', 'emails_')).strip() or 'emails_',
+                    'export_basic': bool(values.get('-EXPORT_BASIC-', True)),
+                    'export_analysis': bool(values.get('-EXPORT_ANALYSIS-', True)),
+                    'clean_bodies': bool(values.get('-CLEAN_BODIES-', True)),
+                    'include_summaries': bool(values.get('-INCLUDE_SUMMARIES-', True))
+                }
+            }
+            
+            # Log the settings being returned (without sensitive data in production)
+            self.logger.debug('Export settings retrieved from UI')
+            
+            return settings
+            
+        except Exception as e:
+            error_msg = f'Error getting export settings: {str(e)}'
+            self.logger.error(error_msg, exc_info=True)
+            # Return default settings in case of error
+            return {
+                'export': {
+                    'enable_csv': False,
+                    'output_dir': str(Path.home() / 'email_exports'),
+                    'file_prefix': 'emails_',
+                    'export_basic': True,
+                    'export_analysis': True,
+                    'clean_bodies': True,
+                    'include_summaries': True
+                }
+            }

@@ -9,16 +9,21 @@ import os
 import shutil
 import sys
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast, Union
 
 import PySimpleGUI as sg
 
-from ..config import load_config, get_config
-from ..logging_config import get_logger, setup_logging
-from ..logging_utils import LogContext, log_errors, log_function_call
-from .export_tab import ExportTab
+from outlook_extractor import __version__
+from outlook_extractor.config import ConfigManager, load_config, get_config
+from outlook_extractor.logging_config import setup_logging, get_logger
+from outlook_extractor.logging_utils import log_errors
+from outlook_extractor.ui.export_tab import ExportTab
+from outlook_extractor.ui.update_dialog import check_for_updates
+
+# Import the export tab
 from .export_tab import ExportTab as ExtractionTab
 
 class EmailExtractorUI:
@@ -28,74 +33,224 @@ class EmailExtractorUI:
         Args:
             config_path: Path to the configuration file
         """
-        self.logger = get_logger(__name__)
-        self.logger.info("Initializing EmailExtractorUI")
-        
-        # Check for updates on startup (silently in the background)
-        self._check_for_updates(silent=True)
-        
-        # Initialize logging first
+        # Initialize logging first, before any other operations
         self._init_logging()
         
-        # Store logger instance
+        # Get logger instance after logging is initialized
         self.logger = get_logger(__name__)
         self.logger.info('Initializing EmailExtractorUI')
         
-        # Load configuration
+        # Track if we've already checked for updates
+        self._update_checked = False
+        self._last_update_check = 0  # Timestamp of last update check
+        self._window_initialized = False  # Track if window is fully initialized
+        
         try:
+            # Load configuration
+            self.logger.debug('Loading configuration...')
             self.config = load_config(config_path)
             self.config_path = config_path  # Store the provided config path
             self.logger.info('Configuration loaded successfully')
-        except Exception as e:
-            self.logger.critical('Failed to load configuration', exc_info=True)
-            raise
             
-        # Initialize UI components
-        self.window = None
-        self.theme = 'LightGrey1'  # Default theme
-        self.current_folder_patterns = []
-        
-        # Set up theme and UI
-        self.setup_theme()
-        
-        # Create the main window
-        self.window = self.create_window()
-        
-        # Initialize export tab as None, will be created when first accessed
-        self.export_tab = None
-        self.logger.debug('Export tab will be initialized on first access')
+            # Initialize UI components
+            self.window = None
+            self.theme = 'LightGrey1'  # Default theme
+            self.current_folder_patterns = []
+            
+            # Set up theme and UI
+            self.setup_theme()
+            
+            # Create the main window
+            self.logger.debug('Creating main window...')
+            self.window = self.create_window()
+            
+            # Mark window as initialized
+            self._window_initialized = True
+            self.logger.debug('Window initialization complete')
+            
+            # Initialize export tab as None, will be created when first accessed
+            self.export_tab = None
+            self.logger.debug('Export tab will be initialized on first access')
+            
+        except Exception as e:
+            self.logger.critical('Failed to initialize application', exc_info=True)
+            # If window was partially initialized, clean it up
+            if hasattr(self, 'window') and self.window:
+                try:
+                    self.window.close()
+                except:
+                    pass
+            raise
         
     def _init_logging(self) -> None:
-        """Initialize the logging system."""
+        """
+        Initialize the logging system with robust error handling.
+        Ensures logging directory exists and configures basic logging before any other operations.
+        """
+        # Configure basic logging first as a fallback
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        
+        # Get root logger and remove any existing handlers
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
         try:
-            # Set up basic logging first to ensure we can log errors during setup
-            logging.basicConfig(
-                level=logging.INFO,
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-            
-            # Now try to set up the full logging configuration
+            # Configure log directory with proper permissions
+            log_dir = Path.home() / '.outlook_extractor' / 'logs'
             try:
-                setup_logging(
-                    log_level='INFO',
-                    log_file='outlook_extractor.log',
-                    max_bytes=10 * 1024 * 1024,  # 10MB
-                    backup_count=5
-                )
-                logging.info('Logging system initialized with full configuration')
+                log_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+                if not os.access(log_dir, os.W_OK):
+                    raise PermissionError(f'Cannot write to log directory: {log_dir}')
             except Exception as e:
-                logging.warning('Failed to initialize full logging system, using basic logging', exc_info=True)
+                raise RuntimeError(f'Failed to create log directory {log_dir}: {str(e)}') from e
+            
+            log_file = log_dir / 'outlook_extractor.log'
+            
+            # Configure console handler
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            
+            # Configure file handler with rotation
+            try:
+                file_handler = logging.handlers.RotatingFileHandler(
+                    filename=str(log_file),
+                    maxBytes=10 * 1024 * 1024,  # 10MB
+                    backupCount=5,
+                    encoding='utf-8',
+                    delay=True  # Delay file opening until first write
+                )
+                file_handler.setLevel(logging.DEBUG)
+                
+                # Set formatters
+                formatter = logging.Formatter(
+                    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S'
+                )
+                console_handler.setFormatter(formatter)
+                file_handler.setFormatter(formatter)
+                
+                # Add handlers
+                root_logger.setLevel(logging.DEBUG)
+                root_logger.addHandler(console_handler)
+                root_logger.addHandler(file_handler)
+                
+                # Log successful initialization
+                root_logger.info('=' * 80)
+                root_logger.info('Application starting...')
+                root_logger.info(f'Log file: {log_file.absolute()}')
+                
+            except Exception as e:
+                # Fall back to basic config if file logging fails
+                logging.basicConfig(
+                    level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[console_handler]
+                )
+                logging.warning(f'Could not set up file logging: {str(e)}', exc_info=True)
                 
         except Exception as e:
-            # If even basic logging fails, print to stderr as a last resort
+            # Last resort error handling if logging setup fails completely
             import sys
-            print(f'CRITICAL: Failed to initialize logging: {str(e)}', file=sys.stderr)
-            raise
+            sys.stderr.write(f'CRITICAL: Failed to initialize logging: {str(e)}\n')
+            sys.stderr.flush()
+            # Re-raise with a more descriptive error
+            raise RuntimeError('Failed to initialize logging system') from e
+            
+    def _configure_logging(self, window) -> None:
+        """
+        Configure logging to include the window's log element if available.
+        
+        Args:
+            window: The PySimpleGUI window object that may contain a log element
+        """
+        if not window or not hasattr(window, 'log'):
+            logging.debug('Window or log element not available, skipping GUI log configuration')
+            return
+            
+        root_logger = logging.getLogger()
+        
+        # Remove any existing window handlers to prevent duplicates
+        for handler in root_logger.handlers[:]:
+            if hasattr(handler, 'window'):
+                try:
+                    root_logger.removeHandler(handler)
+                except Exception as e:
+                    logging.error(f'Error removing existing window handler: {str(e)}')
+        
+        class WindowLogHandler(logging.Handler):
+            """Custom logging handler that writes to a PySimpleGUI Multiline element."""
+            def __init__(self, window):
+                super().__init__()
+                self.window = window
+                self.setLevel(logging.INFO)  # Only show INFO and above in GUI
+                self.setFormatter(logging.Formatter(
+                    '%(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%H:%M:%S'
+                ))
+                self._initialized = False
+                
+            def emit(self, record):
+                if not self._initialized:
+                    return
+                    
+                try:
+                    # Format the message
+                    msg = self.format(record)
+                    
+                    # Update the GUI element in a thread-safe way
+                    if hasattr(self.window, 'write_event_value'):
+                        self.window.write_event_value(('LOG_MESSAGE', msg + '\n'), None)
+                    else:
+                        # Fallback for older PySimpleGUI versions
+                        self.window.log.update(value=msg + '\n', append=True)
+                    
+                    # Auto-scroll to the bottom if possible
+                    try:
+                        self.window.log.set_vscroll_position(1.0)
+                    except Exception:
+                        pass
+                        
+                except Exception as e:
+                    # If we can't log to the window, at least don't crash
+                    try:
+                        sys.stderr.write(f'Error in WindowLogHandler: {str(e)}\n')
+                    except:
+                        pass  # Absolute last resort
+            
+            def set_initialized(self, value):
+                self._initialized = value
+        
+        try:
+            # Add the window handler
+            window_handler = WindowLogHandler(window)
+            root_logger.addHandler(window_handler)
+            
+            # Mark handler as initialized after a short delay to avoid early logging
+            import threading
+            def delayed_init():
+                import time
+                time.sleep(1.0)  # Wait for window to be fully initialized
+                window_handler.set_initialized(True)
+                logging.info('GUI logging handler initialized')
+                
+            init_thread = threading.Thread(target=delayed_init, daemon=True)
+            init_thread.start()
+            
+        except Exception as e:
+            logging.error(f'Failed to configure GUI logging: {str(e)}', exc_info=True)
+            # Ensure we still have console logging if GUI logging fails
+            if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
+                root_logger.addHandler(logging.StreamHandler())
         
     def setup_theme(self):
         """Setup the PySimpleGUI theme and settings."""
         sg.theme(self.theme)
+        # Only set theme-specific options here
         sg.set_options(
             font=('Arial', 10),
             element_padding=(5, 5),
@@ -104,169 +259,202 @@ class EmailExtractorUI:
         )
     
     def create_window(self):
-        """Create the main application window."""
-        # Create a placeholder layout for the Export tab
-        export_placeholder = [
-            [sg.Text('Loading export settings...', font=('Arial', 12))],
-            [sg.ProgressBar(100, orientation='h', size=(20, 20), key='-EXPORT_LOADING-')]
-        ]
+        """Create the main application window with robust error handling."""
+        self.logger.debug('Starting window creation...')
         
-        # Create the tab group with a placeholder for the Export tab
-        tab_layout = [
-            [
-                sg.Column(
+        try:
+            # Create a loading indicator for the export tab
+            export_loading = [
+                [sg.Text('Loading export settings...', font=('Arial', 12))],
+                [sg.ProgressBar(100, orientation='h', size=(20, 20), key='-EXPORT_LOADING-')]
+            ]
+            
+            # Create the tab group with all tabs
+            tab_group = [
+                # Extraction Tab
+                sg.Tab('Extraction', [[sg.Column(
                     self._create_extraction_tab(),
-                    size=(None, None),
                     scrollable=True,
                     vertical_scroll_only=True,
                     expand_x=True,
-                    expand_y=True,
-                    pad=(5, 5)
-                )
-            ]
-        ]
-        
-        tab_group = [
-            sg.Tab('Extraction', tab_layout, key='-TAB_EXTRACTION-'),
-            sg.Tab('Storage', [[sg.Column(
-                self._create_storage_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_STORAGE-'),
-            
-            sg.Tab('Threading', [[sg.Column(
-                self._create_threading_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_THREADING-'),
-            
-            sg.Tab('Email Processing', [[sg.Column(
-                self._create_email_processing_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_EMAIL_PROCESSING-'),
-            
-            sg.Tab('Security', [[sg.Column(
-                self._create_security_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_SECURITY-'),
-            
-            sg.Tab('Export', [
-                [sg.Column(
-                    [
-                        [sg.Text('Export Settings', font=('Helvetica', 14, 'bold'))],
-                        [sg.HorizontalSeparator()],
-                        [sg.pin(
-                            sg.Column(
-                                [[sg.Text('Loading export options...', key='-EXPORT_LOADING-')]],
-                                key='-EXPORT_PLACEHOLDER-',
-                                scrollable=True,
-                                vertical_scroll_only=True,
-                                expand_x=True,
-                                expand_y=True,
-                                visible=True
-                            ),
-                            shrink=True
-                        )]
-                    ],
-                    key='-EXPORT_TAB-',
+                    expand_y=True
+                )]], key='-TAB_EXTRACTION-'),
+                
+                # Storage Tab
+                sg.Tab('Storage', [[sg.Column(
+                    self._create_storage_tab(),
+                    scrollable=True,
+                    vertical_scroll_only=True,
                     expand_x=True,
                     expand_y=True
-                )]
-            ], key='-TAB_EXPORT-', expand_x=True, expand_y=True),
-            
-            sg.Tab('Logs', [[sg.Column(
-                self._create_logs_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_LOGS-'),
-            
-            sg.Tab('About', [[sg.Column(
-                self._create_about_tab(),
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True
-            )]], key='-TAB_ABOUT-'),
-        ]
-        
-        # Define the main layout with proper expansion
-        layout = [
-            [self._create_menu_bar()],
-            [
-                sg.Column(
-                    [
-                        [
-                            sg.TabGroup(
-                                [tab_group],
-                                key='-TAB_GROUP-',
-                                expand_x=True,
-                                expand_y=True,
-                                tab_location='top',
-                                enable_events=True
-                            )
-                        ]
-                    ],
+                )]], key='-TAB_STORAGE-'),
+                
+                # Threading Tab
+                sg.Tab('Threading', [[sg.Column(
+                    self._create_threading_tab(),
+                    scrollable=True,
+                    vertical_scroll_only=True,
+                    expand_x=True,
+                    expand_y=True
+                )]], key='-TAB_THREADING-'),
+                
+                # Email Processing Tab
+                sg.Tab('Email Processing', [[sg.Column(
+                    self._create_email_processing_tab(),
+                    scrollable=True,
+                    vertical_scroll_only=True,
+                    expand_x=True,
+                    expand_y=True
+                )]], key='-TAB_EMAIL_PROCESSING-'),
+                
+                # Security Tab
+                sg.Tab('Security', [[sg.Column(
+                    self._create_security_tab(),
+                    scrollable=True,
+                    vertical_scroll_only=True,
+                    expand_x=True,
+                    expand_y=True
+                )]], key='-TAB_SECURITY-'),
+                
+                # Export Tab (with loading placeholder)
+                sg.Tab('Export', [
+                    [sg.Column(export_loading, key='-EXPORT_LOADING-', expand_x=True, expand_y=True)]
+                ], key='-EXPORT_TAB-'),
+                
+                # Logs Tab - Must be last to ensure it's fully initialized
+                sg.Tab('Logs', [[sg.Multiline(
+                    size=(80, 25),
+                    autoscroll=True,
+                    auto_refresh=True,
+                    write_only=True,
+                    key='-LOG-',
+                    disabled=True,
+                    background_color='#f0f0f0',
+                    text_color='black',
+                    font=('Courier', 10),
                     expand_x=True,
                     expand_y=True,
-                    pad=(5, 5)
-                )
-            ],
-            [
-                sg.StatusBar('Ready', key='-STATUS-', size=(20, 1), expand_x=True),
-                sg.Push(),
-                sg.Button('Backup', key='-BACKUP-'),
-                sg.Button('Run Extraction', key='-RUN-', button_color=('white', 'green')),
-                sg.Button('Exit', key='-EXIT-', size=(8, 1))
+                    reroute_stdout=False,  # Disable automatic rerouting to prevent duplicates
+                    reroute_stderr=False,  # Disable automatic rerouting to prevent duplicates
+                    echo_stdout_stderr=False
+                )]], key='-LOGS_TAB-'),
+                
+                # About Tab
+                sg.Tab('About', [[sg.Column(
+                    self._create_about_tab(),
+                    scrollable=True,
+                    vertical_scroll_only=True,
+                    expand_x=True,
+                    expand_y=True
+                )]], key='-ABOUT_TAB-')
             ]
-        ]
-        
-        # Create the window with a minimum size
-        window = sg.Window(
-            'Outlook Email Extractor',
-            layout,
-            resizable=True,
-            finalize=True,
-            size=(1000, 750),
-            element_justification='left',
-            margins=(5, 5)
-        )
-        window.set_min_size(window.size)
-        
-        # Initialize the export tab
-        try:
+            
+            # Define the main layout with proper expansion
+            layout = [
+                [self._create_menu_bar()],
+                [
+                    sg.Column(
+                        [
+                            [
+                                sg.TabGroup(
+                                    [tab_group],
+                                    key='-TAB_GROUP-',
+                                    expand_x=True,
+                                    expand_y=True,
+                                    tab_location='top',
+                                    enable_events=True
+                                    # Using minimal parameters for maximum compatibility
+                                )
+                            ]
+                        ],
+                        expand_x=True,
+                        expand_y=True,
+                        pad=(5, 5)
+                    )
+                ],
+                [
+                    sg.StatusBar('Ready', key='-STATUS-', size=(20, 1), expand_x=True),
+                    sg.Push(),
+                    sg.Button('Backup', key='-BACKUP-'),
+                    sg.Button('Run Extraction', key='-RUN-', button_color=('white', 'green')),
+                    sg.Button('Exit', key='-EXIT-', size=(8, 1))
+                ]
+            ]
+            
+            # Create the main window with error handling
+            try:
+                self.logger.debug('Creating main window...')
+                window = sg.Window(
+                    f'Outlook Email Extractor {__version__}',
+                    layout,
+                    finalize=True,
+                    resizable=True,
+                    size=(1200, 800),  # Slightly larger default size
+                    element_justification='center',
+                    font=('Arial', 10),
+                    enable_close_attempted_event=True,
+                    location=(None, None),  # Let the window manager handle initial position
+                    margins=(10, 10),
+                    element_padding=(5, 5)
+                )
+                
+                # Set the window to be maximized if supported
+                try:
+                    window.maximize()
+                except Exception as e:
+                    self.logger.warning(f'Could not maximize window: {str(e)}')
+                    window.size = (1200, 800)
+                
+                # Configure logging to use the window's log element
+                self.logger.debug('Configuring window logging...')
+                self._configure_logging(window)
+                
+                # Log window creation success
+                self.logger.info('Main window created successfully')
+                self.logger.debug(f'Window size: {window.size}')
+                
+                return window
+                
+            except Exception as e:
+                self.logger.critical(f'Failed to create main window: {str(e)}', exc_info=True)
+                # Try to create a minimal error window
+                try:
+                    sg.popup_error(
+                        'Failed to create main window',
+                        str(e),
+                        title='Fatal Error',
+                        keep_on_top=True
+                    )
+                except:
+                    pass
+                raise
+                
+        except Exception as e:
+            self.logger.critical(f'Failed to create window layout: {str(e)}', exc_info=True)
+            # If we get here, something went very wrong with the layout
+            try:
+                sg.popup_error(
+                    'Failed to create window layout',
+                    str(e),
+                    title='Fatal Error',
+                    keep_on_top=True
+                )
+            except:
+                pass
+            raise
+                # Continue without GUI logging rather than failing
+            
+            # Now that the window is created, initialize the export tab
             self.export_tab = ExportTab(self.config)
-            self.export_tab.window = window
-            self.logger.debug('Export tab initialized')
+            export_column = self.export_tab.get_layout()
             
-            # Get the layout from the export tab
-            export_tab_layout = self.export_tab.get_layout()
-            
-            # Create a scrollable column for the export tab content
-            export_column = sg.Column(
-                export_tab_layout,
-                scrollable=True,
-                vertical_scroll_only=True,
-                expand_x=True,
-                expand_y=True,
-                key='-EXPORT_CONTENT-',
-                pad=(5, 5)
-            )
+            # Store window reference in export tab if needed
+            if hasattr(self.export_tab, 'window'):
+                self.export_tab.window = self.window
             
             # Replace the placeholder with the actual export tab content
-            window.extend_layout(window['-EXPORT_TAB-'], [[export_column]])
-            window['-EXPORT_LOADING-'].update(visible=False)
+            self.window.extend_layout(self.window['-EXPORT_TAB-'], [[export_column]])
+            self.window['-EXPORT_LOADING-'].update(visible=False)
             
             # Initialize folder patterns if available
             if hasattr(self, 'window') and self.window:
@@ -290,20 +478,25 @@ class EmailExtractorUI:
                     size=(80, 10),
                     disabled=True,
                     text_color='red',
-                    background_color='#FFEBEE'
+                    background_color='#f9f9f9',
+                    expand_x=True,
+                    expand_y=True
                 )],
                 [sg.Text('Please check the application logs for more details.', text_color='orange')],
-                [sg.Button('Retry', key='-RETRY_EXPORT_TAB-')]
+                [sg.Button('Retry', key='-RETRY_EXPORT_TAB-'), sg.Button('Close', key='-CLOSE_ERROR-')]
             ]
             
-            # Replace the loading message with the error layout
-            window['-EXPORT_LOADING-'].update(visible=False)
-            window.extend_layout(window['-EXPORT_TAB-'], error_layout)
-        
+            # If window exists, update it, otherwise show error in a popup
+            if hasattr(self, 'window') and self.window:
+                self.window['-EXPORT_LOADING-'].update(visible=False)
+                self.window.extend_layout(self.window['-EXPORT_TAB-'], [error_layout])
+            else:
+                sg.popup_error('Failed to initialize export tab', str(e))
+                
         # Load current config into the UI
         self._load_config_to_ui()
         
-        return window
+        return self.window
     
     def _create_menu_bar(self):
         """Create the menu bar."""
@@ -624,78 +817,83 @@ class EmailExtractorUI:
             values = self.window.read(timeout=100)[1]
             
             # Outlook settings
-            self.config.set('outlook', 'mailbox_name', values['-MAILBOX-'].strip())
+            if '-MAILBOX-' in values:
+                self.config.config['outlook']['mailbox_name'] = values['-MAILBOX-'].strip()
             
             # Handle folder patterns - ensure proper formatting
-            folder_patterns = [p.strip() for p in values['-FOLDER_PATTERNS-'].split(',') 
-                             if p.strip()]
-            self.config.set('outlook', 'folder_patterns', ','.join(folder_patterns))
-            
-            # Handle max emails (0 means no limit)
-            max_emails = max(0, int(values['-MAX_EMAILS-']))
-            self.config.set('outlook', 'max_emails', str(max_emails))
+            if '-FOLDER_PATTERNS-' in values:
+                folder_patterns = [p.strip() for p in values['-FOLDER_PATTERNS-'].split(',') 
+                                 if p.strip()]
+                self.config.config['outlook']['folder_patterns'] = ','.join(folder_patterns)
             
             # Date range
-            if values['-DATE_RANGE_CUSTOM-'] and values['-START_DATE-'] and values['-END_DATE-']:
-                # Save custom date range
-                self.config.set('date_range', 'date_ranges', 
-                              f"{values['-START_DATE-']}|{values['-END_DATE-']}")
-                self.config.set('date_range', 'days_back', '')
-            else:
-                # Save days back
-                days_back = max(1, int(values.get('-DAYS_BACK-', 30)))
-                self.config.set('date_range', 'date_ranges', '')
-                self.config.set('date_range', 'days_back', str(days_back))
+            if '-DATE_RANGE_DAYS-' in values and values['-DATE_RANGE_DAYS-']:
+                self.config.config['date_range']['days_back'] = str(values.get('-DAYS_BACK-', '30'))
                 
+            if '-DATE_RANGE_MONTHS-' in values and values['-DATE_RANGE_MONTHS-'] and '-MONTH_YEAR-' in values and values['-MONTH_YEAR-']:
+                # Format: MM/YYYY,MM/YYYY
+                month_year = values['-MONTH_YEAR-']
+                start_month, start_year = month_year.split('/')
+                end_month = str(int(start_month) + 1).zfill(2)
+                end_year = start_year
+                if int(start_month) == 12:  # Handle December
+                    end_month = '01'
+                    end_year = str(int(start_year) + 1)
+                date_ranges = f"{start_month}/{start_year},{end_month}/{end_year}"
+                self.config.config['date_range']['date_ranges'] = date_ranges
+            
             # Storage settings
-            self.config.set('storage', 'output_dir', values['-OUTPUT_DIR-'].strip())
-            self.config.set('storage', 'type', values['-STORAGE_TYPE-'].lower())
-            self.config.set('storage', 'db_filename', values['-DB_FILENAME-'].strip())
+            if '-OUTPUT_DIR-' in values:
+                self.config.config['storage']['output_dir'] = values['-OUTPUT_DIR-'].strip()
+            if '-DB_FILENAME-' in values:
+                self.config.config['storage']['db_filename'] = values['-DB_FILENAME-'].strip()
+            if '-JSON_EXPORT-' in values:
+                self.config.config['storage']['json_export'] = '1' if values['-JSON_EXPORT-'] else '0'
+            if '-JSON_PRETTY-' in values:
+                self.config.config['storage']['json_pretty_print'] = '1' if values['-JSON_PRETTY-'] else '0'
             
-            # Handle JSON export
-            export_json = bool(values['-EXPORT_JSON-'])
-            self.config.set('storage', 'json_export', '1' if export_json else '0')
-            self.config.set('storage', 'json_filename', values['-JSON_FILENAME-'].strip())
-            
-            # Threading settings
-            self.config.set('threading', 'enable_threading', 
-                          '1' if values['-ENABLE_THREADING-'] else '0')
-            self.config.set('threading', 'thread_method', values['-THREAD_METHOD-'])
-            
-            max_depth = max(1, min(50, int(values.get('-MAX_THREAD_DEPTH-', 10))))
-            self.config.set('threading', 'max_thread_depth', str(max_depth))
-            
-            timeout_days = max(1, min(365, int(values.get('-THREAD_TIMEOUT_DAYS-', 30))))
-            self.config.set('threading', 'thread_timeout_days', str(timeout_days))
-                          
             # Email processing
-            self.config.set('email_processing', 'extract_attachments', 
-                          '1' if values['-EXTRACT_ATTACHMENTS-'] else '0')
-            self.config.set('email_processing', 'attachment_dir', 
-                          values['-ATTACHMENT_DIR-'].strip())
-            self.config.set('email_processing', 'extract_embedded_images', 
-                          '1' if values['-EXTRACT_IMAGES-'] else '0')
-            self.config.set('email_processing', 'image_dir', 
-                          values['-IMAGE_DIR-'].strip())
-            self.config.set('email_processing', 'extract_links', 
-                          '1' if values['-EXTRACT_LINKS-'] else '0')
-            self.config.set('email_processing', 'extract_phone_numbers', 
-                          '1' if values['-EXTRACT_PHONES-'] else '0')
-                          
-            # Security
-            self.config.set('security', 'redact_sensitive_data', 
-                          '1' if values['-REDACT_SENSITIVE-'] else '0')
+            if '-EXTRACT_ATTACHMENTS-' in values:
+                self.config.config['email_processing']['extract_attachments'] = '1' if values['-EXTRACT_ATTACHMENTS-'] else '0'
+            if '-ATTACHMENT_DIR-' in values:
+                self.config.config['email_processing']['attachment_dir'] = values['-ATTACHMENT_DIR-'].strip()
+            if '-EXTRACT_IMAGES-' in values:
+                self.config.config['email_processing']['extract_embedded_images'] = '1' if values['-EXTRACT_IMAGES-'] else '0'
+            if '-IMAGE_DIR-' in values:
+                self.config.config['email_processing']['image_dir'] = values['-IMAGE_DIR-'].strip()
+            if '-EXTRACT_LINKS-' in values:
+                self.config.config['email_processing']['extract_links'] = '1' if values['-EXTRACT_LINKS-'] else '0'
+            if '-EXTRACT_PHONES-' in values:
+                self.config.config['email_processing']['extract_phone_numbers'] = '1' if values['-EXTRACT_PHONES-'] else '0'
             
-            # Handle redaction patterns (convert newlines to list and clean up)
-            patterns = [p.strip() for p in values['-REDACTION_PATTERNS-'].split('\n') 
-                      if p.strip()]
-            if not patterns:  # Ensure at least default patterns
-                patterns = ['password', 'ssn', 'credit.?card']
-            self.config.set('security', 'redaction_patterns', ','.join(patterns))
+            # Threading
+            if '-ENABLE_THREADING-' in values:
+                self.config.config['threading']['enable_threading'] = '1' if values['-ENABLE_THREADING-'] else '0'
+            if '-THREAD_METHOD-' in values:
+                self.config.config['threading']['thread_method'] = values['-THREAD_METHOD-']
+            if '-MAX_THREAD_DEPTH-' in values:
+                self.config.config['threading']['max_thread_depth'] = str(values['-MAX_THREAD_DEPTH-'])
+            if '-THREAD_TIMEOUT_DAYS-' in values:
+                self.config.config['threading']['thread_timeout_days'] = str(values['-THREAD_TIMEOUT_DAYS-'])
+            
+            # Security
+            if '-REDACT_SENSITIVE-' in values:
+                self.config.config['security']['redact_sensitive_data'] = '1' if values['-REDACT_SENSITIVE-'] else '0'
+            
+            # Handle redaction patterns
+            if '-REDACTION_PATTERNS-' in values:
+                if values['-REDACTION_PATTERNS-']:
+                    patterns = [p.strip() for p in values['-REDACTION_PATTERNS-'].split(',') 
+                               if p.strip()]
+                else:
+                    patterns = ['password', 'ssn', 'credit.?card']
+                self.config.config['security']['redaction_patterns'] = ','.join(patterns)
             
             # Logging
-            self.config.set('logging', 'log_level', values['-LOG_LEVEL-'])
-            self.config.set('logging', 'log_file', values['-LOG_FILE-'].strip())
+            if '-LOG_LEVEL-' in values:
+                self.config.config['logging']['log_level'] = values['-LOG_LEVEL-']
+            if '-LOG_FILE-' in values:
+                self.config.config['logging']['log_file'] = values['-LOG_FILE-'].strip()
             
         except Exception as e:
             sg.popup_error(f'Error saving configuration: {str(e)}', title='Error')
@@ -879,23 +1077,32 @@ class EmailExtractorUI:
                 self.window.refresh()
     
     @log_errors()
-    def event_loop(self) -> None:
-        """Run the main event loop for the application."""
+    def event_loop(self):
+        """
+        Run the main event loop for the application with robust error handling.
+        
+        This method handles the main application loop, processes events, and ensures
+        proper cleanup on exit. It includes comprehensive error handling to prevent
+        crashes and provide meaningful feedback to the user.
+        """
         if not self.window:
-            self.logger.error('Window not initialized')
+            self.logger.error("Cannot start event loop: window not initialized")
             return
             
-        self.logger.info('Starting main event loop')
+        self.logger.info("Starting main event loop")
+        
+        # Track if we're in the process of shutting down
+        self._shutting_down = False
         
         try:
             while True:
                 try:
-                    # Process events with a timeout to allow for responsive UI
+                    # Read with a timeout to allow for periodic checks
                     event, values = self.window.read(timeout=100)
                     
-                    # Check for window close or exit events
-                    if event in (sg.WIN_CLOSED, 'Exit', '-EXIT-'):
-                        self.logger.info('Exit requested by user')
+                    # Check for window close or exit request
+                    if event in (sg.WIN_CLOSED, '-EXIT-', None):
+                        self.logger.info("Exit requested by user")
                         if sg.popup_yes_no('Are you sure you want to exit?', title='Exit') == 'Yes':
                             break
                         continue
@@ -904,10 +1111,20 @@ class EmailExtractorUI:
                     if event is None:
                         continue
                         
-                    # Log the event (at debug level to avoid noise)
+                    # Handle special log message events from the GUI handler
+                    if isinstance(event, tuple) and len(event) == 2 and event[0] == 'LOG_MESSAGE':
+                        try:
+                            if hasattr(self.window, 'log') and self.window.log:
+                                self.window.log.update(value=event[1], append=True)
+                                self.window.log.set_vscroll_position(1.0)  # Auto-scroll
+                        except Exception as e:
+                            sys.stderr.write(f"Error updating log window: {str(e)}\n")
+                        continue
+                        
+                    # Log the event at debug level to avoid noise
                     self.logger.debug('Event received: %s', event)
                     
-                    # Handle the event
+                    # Handle the event with error handling
                     try:
                         self._handle_event(event, values)
                     except Exception as e:
@@ -918,49 +1135,68 @@ class EmailExtractorUI:
                             exc_info=True
                         )
                         
-                        # Show error to user
-                        sg.popup_error(
-                            f'Error processing {event}:\n{str(e)}',
-                            title='Error',
-                            keep_on_top=True
-                        )
-                        
+                        # Show error to user with more context
+                        try:
+                            sg.popup_error(
+                                'An error occurred while processing your request.\n\n'
+                                f'Error: {str(e)}\n\n'
+                                'The application will continue running.\n'
+                                'Please check the logs for more details.',
+                                title='Error',
+                                keep_on_top=True
+                            )
+                        except Exception as popup_error:
+                            self.logger.error(
+                                'Failed to show error popup: %s', 
+                                str(popup_error),
+                                exc_info=True
+                            )
+                            
+                except KeyboardInterrupt:
+                    self.logger.info("Keyboard interrupt received, shutting down...")
+                    break
+                    
                 except Exception as e:
                     self.logger.critical(
-                        'Unexpected error in event loop', 
+                        'Unexpected error in event loop: %s', 
+                        str(e),
                         exc_info=True
                     )
+                    
                     # Try to recover by showing error to user
                     try:
-                        sg.popup_error(
-                            'An unexpected error occurred.\n\n'
+                        if sg.popup_yes_no(
+                            'An unexpected error occurred in the application.\n\n'
                             f'Error: {str(e)}\n\n'
-                            'The application will attempt to continue running.',
+                            'Do you want to continue running the application?\n'
+                            "(Selecting 'No' will close the application)",
                             title='Unexpected Error',
                             keep_on_top=True
+                        ) != 'Yes':
+                            break
+                    except Exception as popup_error:
+                        self.logger.error(
+                            'Failed to show recovery popup: %s', 
+                            str(popup_error),
+                            exc_info=True
                         )
+                        # If we can't show the popup, it's better to exit
+                        break
                     except Exception:
                         pass  # If we can't show the error, at least we logged it
                         
         except Exception as e:
             self.logger.critical('Fatal error in main event loop', exc_info=True)
             raise
-            
-        finally:
-            self.logger.info('Event loop ended')
-            self._cleanup()
-    
-    def _cleanup(self):
-        """Clean up resources before exiting."""
-        self.logger.info("Cleaning up resources...")
         try:
-            if hasattr(self, 'window') and self.window:
-                self.window.close()
-                self.logger.debug("Main window closed")
+            self.logger.debug('Stopping background tasks...')
+            # Add any background task cleanup here
+            # Example: self.background_thread.stop() if hasattr(self, 'background_thread') else None
+            pass
         except Exception as e:
-            self.logger.error(f"Error during cleanup: {str(e)}", exc_info=True)
-        self.logger.info("Application shutdown complete")
-        
+            self.logger.error(error_msg, exc_info=True)
+            cleanup_errors.append(error_msg)
+            
     def _handle_event(self, event: str, values: Dict[str, Any]) -> None:
         """Handle UI events.
         
@@ -969,23 +1205,14 @@ class EmailExtractorUI:
             values: Dictionary of UI element values
         """
         try:
-            if event == 'Open Config':
-                config_file = sg.popup_get_file('Open Config', 
-                                             file_types=(('INI Files', '*.ini'),))
-                if config_file:
-                    try:
-                        self.config = load_config(config_file)
-                        self.config_path = config_file
-                        self._load_config_to_ui()
-                        sg.popup_ok('Config loaded successfully!', title='Success')
-                    except Exception as e:
-                        sg.popup_error(f'Error loading config: {str(e)}', title='Error')
-            
-            elif event == 'Save Config':
-                save_path = sg.popup_get_file('Save Config As', 
-                                           save_as=True, 
-                                           default_extension='.ini',
-                                           file_types=(('INI Files', '*.ini'),))
+            if event == 'Save Config':
+                save_path = sg.popup_get_file(
+                    'Save Config As',
+                    save_as=True,
+                    default_extension='.ini',
+                    file_types=(('INI Files', '*.ini'),)
+                )
+                
                 if save_path:
                     try:
                         self._save_ui_to_config()
@@ -1040,6 +1267,10 @@ class EmailExtractorUI:
                 active_tab = values['-TAB_GROUP-']
                 self.logger.debug(f'Tab changed to: {active_tab}')
                 
+                # Lazy load the export tab when it's selected
+                if active_tab == '-EXPORT_TAB-':
+                    self._load_export_tab()
+                
             # Handle theme changes
             elif event == 'Theme::Light':
                 self.theme = 'LightGrey1'
@@ -1070,29 +1301,68 @@ class EmailExtractorUI:
             self.logger.error(f'Error handling event {event}: {str(e)}', exc_info=True)
             sg.popup_error(f'Error: {str(e)}', title='Error')
 
+    def _load_export_tab(self):
+        """Lazy load the export tab content when the tab is first selected."""
+        try:
+            if self.export_tab is None:
+                self.logger.debug('Loading export tab content...')
+                from outlook_extractor.ui.export_tab import ExportTab
+                self.export_tab = ExportTab(self.config)
+                
+                # Replace the loading placeholder with the actual content
+                if hasattr(self, 'window') and self.window:
+                    self.window['-EXPORT_LOADING-'].update(visible=False)
+                    self.window.extend_layout(
+                        self.window['-EXPORT_TAB-'],
+                        self.export_tab.get_layout()
+                    )
+                    self.window.refresh()
+                    self.logger.debug('Export tab content loaded successfully')
+        except Exception as e:
+            self.logger.error(f'Error loading export tab: {str(e)}', exc_info=True)
+            sg.popup_error(f'Error loading export tab: {str(e)}', title='Error')
+
     def _handle_documentation_link(self, event):
         """Handle documentation link clicks."""
         if event in ('Documentation', '-DOCS_LINK-'):
             import webbrowser
             webbrowser.open('https://github.com/yourusername/outlook-extractor')
             
-    def _check_for_updates(self, silent: bool = False):
+    def _check_for_updates(self, silent: bool = False) -> None:
         """Check for application updates.
         
         Args:
             silent: If True, don't show any UI if no update is available
         """
         try:
+            # Don't check if we're already checking
+            if self._update_checked:
+                return
+                
             from .. import check_for_updates
+            
+            # Get the window if it exists, otherwise use None
+            parent_window = None
+            if hasattr(self, 'window') and self.window is not None:
+                parent_window = self.window
+                self.logger.info("Window is available for update dialog")
+            else:
+                self.logger.warning("Window not available for update dialog")
+                return  # Can't show UI without a window
+                
+            # Mark that we've checked for updates
+            self._update_checked = True
+            self._last_update_check = time.time()
+                
             check_for_updates(
-                parent_window=self.window,
+                parent_window=parent_window,
                 repo_owner="bbleak-repo",
                 repo_name="outlook-extractor",
                 silent=silent
             )
         except Exception as e:
             self.logger.error(f"Error checking for updates: {e}", exc_info=True)
-            if not silent:
+            if not silent and hasattr(self, 'window') and self.window is not None:
                 sg.popup_error(f"Error checking for updates: {e}", title="Update Error")
             
     def run(self) -> None:
@@ -1112,6 +1382,94 @@ class EmailExtractorUI:
         finally:
             self._cleanup()
             
+    def _cleanup(self) -> None:
+        """
+        Clean up resources before exiting.
+        
+        This method ensures all resources are properly released, configurations are saved,
+        and the application shuts down gracefully. It includes comprehensive error handling
+        to ensure cleanup completes as much as possible even if some operations fail.
+        """
+        if hasattr(self, '_shutting_down') and self._shutting_down:
+            self.logger.debug('Cleanup already in progress, skipping duplicate call')
+            return
+            
+        self._shutting_down = True
+        self.logger.info('Starting application cleanup...')
+        
+        # Track cleanup status
+        cleanup_errors = []
+        
+        # 1. Save any pending configuration changes
+        try:
+            self.logger.debug('Saving configuration...')
+            self._save_ui_to_config()
+            self.logger.info('Configuration saved successfully')
+        except Exception as e:
+            error_msg = f'Failed to save configuration: {str(e)}'
+            self.logger.error(error_msg, exc_info=True)
+            cleanup_errors.append(error_msg)
+        
+        # 2. Stop any running background tasks or threads
+        try:
+            self.logger.debug('Stopping background tasks...')
+            # Add any background task cleanup here
+            # Example: self.background_thread.stop() if hasattr(self, 'background_thread') else None
+            pass
+        except Exception as e:
+            error_msg = f'Error stopping background tasks: {str(e)}'
+            self.logger.error(error_msg, exc_info=True)
+            cleanup_errors.append(error_msg)
+        
+        # 3. Close the window and clean up GUI resources
+        if hasattr(self, 'window') and self.window:
+            try:
+                self.logger.debug('Closing main window...')
+                self.window.close()
+                self.window = None
+                self.logger.info('Main window closed')
+            except Exception as e:
+                error_msg = f'Error closing window: {str(e)}'
+                self.logger.error(error_msg, exc_info=True)
+                cleanup_errors.append(error_msg)
+        
+        # 4. Clean up any other resources
+        try:
+            self.logger.debug('Cleaning up additional resources...')
+            # Add any additional cleanup code here
+            # Example: self.database_connection.close() if hasattr(self, 'database_connection') else None
+            pass
+        except Exception as e:
+            error_msg = f'Error during resource cleanup: {str(e)}'
+            self.logger.error(error_msg, exc_info=True)
+            cleanup_errors.append(error_msg)
+        
+        # 5. Flush all log handlers to ensure all messages are written
+        try:
+            import logging
+            for handler in logging.root.handlers[:]:
+                try:
+                    handler.flush()
+                    if hasattr(handler, 'close'):
+                        handler.close()
+                except Exception as e:
+                    self.logger.error(f'Error closing log handler {handler}: {str(e)}', exc_info=True)
+        except Exception as e:
+            self.logger.error(f'Error flushing logs: {str(e)}', exc_info=True)
+        
+        # Log completion status
+        if cleanup_errors:
+            error_summary = '\n- '.join(cleanup_errors)
+            self.logger.warning(f'Cleanup completed with {len(cleanup_errors)} error(s):\n- {error_summary}')
+        else:
+            self.logger.info('Cleanup completed successfully')
+        
+        # Final log message
+        self.logger.info('Application shutdown complete')
+        
+        # Ensure all handlers are closed
+        logging.shutdown()
+    
     def _handle_run_event(self, values: Dict[str, Any]) -> None:
         """Handle the run button click event.
         
@@ -1315,11 +1673,13 @@ def main() -> None:
         # Parse command line arguments
         config_path = sys.argv[1] if len(sys.argv) > 1 else None
         
-        # Configure PySimpleGUI settings
+        # Configure PySimpleGUI settings - only set basic options here
         sg.set_options(
             element_padding=(4, 1),
             text_justification='left',
-            border_width=1
+            border_width=1,
+            # Make sure these don't conflict with setup_theme
+            auto_size_buttons=True
         )
         
         # Create and run the application

@@ -5,6 +5,7 @@ Main entry point for the Outlook Extractor application.
 import os
 import sys
 import traceback
+import logging
 from pathlib import Path
 
 def setup_environment():
