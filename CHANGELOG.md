@@ -7,16 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-07-15
+
 ### Added
-- Initial project setup with basic email extraction capabilities
+- macOS compatibility layer with platform-specific implementations
+- Lazy loading for the Export tab to improve initial load performance
+- Enhanced error handling and logging throughout the application
+- Export functionality for saving email data to CSV format
+- Support for custom export templates and formats
+- Automated testing framework for GUI components
+- Comprehensive documentation updates
+
+### Changed
+- Refactored UI components for better cross-platform compatibility
+- Improved error messages and user feedback
+- Optimized memory usage for large email exports
+- Updated configuration handling to be more robust
+- Enhanced security for handling sensitive data
+- Improved macOS window management and theming
+
+### Fixed
+- Fixed layout issues in the Export tab on macOS
+- Resolved configuration saving/loading problems
+- Fixed threading issues in the email extraction process
+- Addressed memory leaks in the UI components
+- Fixed file path handling for cross-platform compatibility
+- Resolved issues with special characters in email subjects and bodies
+
+## [1.0.0] - 2025-07-14
+
+### Added
+- Initial release of Outlook Email Extractor
 - Cross-platform GUI using PySimpleGUI
 - Configuration management system
 - Support for SQLite and JSON storage backends
 - Threaded email processing
 - Basic security features including data redaction
-
-### Changed
-- N/A
 
 ### Fixed
 - N/A

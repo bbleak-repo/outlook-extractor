@@ -1,15 +1,17 @@
 # Outlook Email Extractor
 
-A cross-platform application for extracting and managing emails from Microsoft Outlook with a user-friendly interface.
+A cross-platform application for extracting and managing emails from Microsoft Outlook with a user-friendly interface. Now with full macOS support and enhanced export capabilities.
 
 ## Features
 
-- Extract emails from Outlook with various filtering options
-- Threaded conversation view
-- Multiple storage backends (SQLite, JSON)
-- Configurable data extraction (attachments, embedded images, links, etc.)
-- Secure handling of sensitive information
-- Cross-platform support (Windows, macOS)
+- **Cross-Platform**: Fully supported on both Windows and macOS
+- **Email Extraction**: Extract emails with various filtering options
+- **Threaded Conversations**: View and manage email threads
+- **Multiple Storage Backends**: SQLite and JSON support
+- **Advanced Export**: Export to CSV with customizable templates
+- **Data Security**: Secure handling of sensitive information
+- **Performance Optimized**: Lazy loading for better performance
+- **Modern UI**: Clean, responsive interface with theme support
 
 ## Prerequisites
 
@@ -18,6 +20,13 @@ A cross-platform application for extracting and managing emails from Microsoft O
 - Tkinter (usually included with Python)
 
 ## Installation
+
+### Prerequisites
+- Python 3.8 or higher
+- Tkinter (usually included with Python)
+- On macOS: Ensure Xcode command line tools are installed (`xcode-select --install`)
+
+### Quick Start
 
 1. Clone the repository:
    ```bash
@@ -41,21 +50,35 @@ A cross-platform application for extracting and managing emails from Microsoft O
    pip install -r requirements.txt
    ```
 
+### macOS Notes
+For optimal performance on macOS:
+- Use Python 3.9 or later
+- Ensure you have the latest version of PySimpleGUI
+- If you encounter any UI issues, try running with the `--no-console` flag
+
 ## Usage
 
+### Basic Usage
 Run the application:
 ```bash
+# Standard mode
 python -m outlook_extractor.run
+
+# With custom config
+python -m outlook_extractor.run --config /path/to/config.ini
+
+# On macOS (without console window)
+pythonw -m outlook_extractor.run
 ```
 
 ### Command Line Arguments
 
-- `--config`: Path to a custom configuration file (optional)
-
-Example:
-```bash
-python -m outlook_extractor.run --config /path/to/config.ini
-```
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `--config` | Path to a custom configuration file | `--config ~/custom_config.ini` |
+| `--debug` | Enable debug mode | `--debug` |
+| `--no-console` | Run without console window (macOS) | `--no-console` |
+| `--version` | Show version information | `--version` |
 
 ## Configuration
 
@@ -77,14 +100,36 @@ outlook-extract/
 │   ├── run.py             # Main entry point
 │   ├── core/              # Core functionality
 │   │   ├── __init__.py
-│   │   └── outlook_client.py
+│   │   ├── outlook_client.py
+│   │   └── platform/      # Platform-specific implementations
 │   └── ui/                # User interface components
 │       ├── __init__.py
-│       └── main_window.py
+│       ├── main_window.py
+│       ├── export_tab.py  # Export functionality
+│       └── components/    # Reusable UI components
 ├── tests/                 # Unit and integration tests
+│   ├── unit/
+│   └── integration/
+├── docs/                  # Documentation
 ├── requirements.txt       # Project dependencies
+├── CHANGELOG.md          # Version history
 └── README.md             # This file
 ```
+
+## Exporting Emails
+
+The application supports exporting emails in various formats:
+
+1. **CSV Export**: Export email data to CSV files with customizable fields
+2. **Template-Based Export**: Create custom export templates
+3. **Bulk Export**: Export multiple folders at once
+
+### Export Options
+- Include/exclude email headers
+- Filter by date range
+- Export attachments
+- Clean HTML formatting
+- Include AI-generated summaries
 
 ## License
 
