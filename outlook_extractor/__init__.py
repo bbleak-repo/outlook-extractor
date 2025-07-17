@@ -7,7 +7,7 @@ import platform
 import warnings
 
 # Version information
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__ = "Your Name"
 __license__ = "MIT"
 
@@ -33,31 +33,58 @@ check_for_updates = None
 
 # Import core functionality
 try:
-    from .storage.sqlite_storage import SQLiteStorage
+    # Import platform-agnostic modules first
+    from .storage.base import EmailStorage as BaseStorage
     from .storage.json_storage import JSONStorage
     from .config import ConfigManager, get_config
     from .logging_config import setup_logging
     from .export.csv_exporter import CSVExporter
     
+    # Import threading module (platform-agnostic)
+    from .core import StoppableThread, WorkerThread, ThreadPool
+    
     # Import Windows-specific modules if on Windows
     if IS_WINDOWS:
         try:
             from .core.outlook_client import OutlookClient
-            from .core.threading import EmailThread, ThreadManager
+            from .core.email_threading import EmailThread
             from .main import OutlookExtractor
             from .auto_updater import AutoUpdater, UpdateError
             from .ui.update_dialog import check_for_updates
+            
+            # Set up Windows-specific exports
+            ThreadManager = ThreadPool  # Use ThreadPool as the default ThreadManager
         except ImportError as e:
             warnings.warn(f"Failed to import Windows-specific modules: {e}")
     else:
         warnings.warn("Outlook integration is only available on Windows")
         
-    # Import platform-agnostic modules
-    from .core.threading import EmailThread, ThreadManager
+        # Provide dummy implementations for non-Windows platforms
+        class DummyOutlookClient:
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError("Outlook integration is only available on Windows")
+        
+        OutlookClient = DummyOutlookClient
+        EmailThread = object
+        ThreadManager = ThreadPool  # Still provide thread pool functionality
+        
+    # Import main application
     from .main import OutlookExtractor
     
 except ImportError as e:
     warnings.warn(f"Failed to import some modules: {e}")
+    
+    # Provide dummy implementations if imports failed
+    class DummyClass: pass
+    
+    for name in [
+        'BaseStorage', 'JSONStorage', 'ConfigManager', 'get_config',
+        'setup_logging', 'CSVExporter', 'StoppableThread', 'WorkerThread',
+        'ThreadPool', 'OutlookClient', 'EmailThread', 'ThreadManager',
+        'OutlookExtractor', 'AutoUpdater', 'UpdateError', 'check_for_updates'
+    ]:
+        if name not in locals():
+            locals()[name] = DummyClass
 
 # Export public API
 __all__ = [
@@ -67,17 +94,13 @@ __all__ = [
     'check_for_updates'
 ]
 
-# Only import Windows-specific modules on Windows
-if sys.platform == 'win32':
-    try:
-        from .core.outlook_client import OutlookClient
-        from .core.email_threading import EmailThread, ThreadManager
-        from .storage import SQLiteStorage, JSONStorage
-        from .main import OutlookExtractor
-        from .config import ConfigManager, get_config
-        from .logging_setup import setup_logging
-    except ImportError as e:
-        print(f"Warning: Could not import Windows-specific modules: {e}")
+# Export the threading utilities
+__all__ = [
+    'OutlookClient', 'EmailThread', 'ThreadManager', 'SQLiteStorage',
+    'JSONStorage', 'OutlookExtractor', 'ConfigManager', 'get_config',
+    'setup_logging', 'CSVExporter', 'AutoUpdater', 'UpdateError', 
+    'check_for_updates', 'StoppableThread', 'WorkerThread', 'ThreadPool'
+]
 
 # Always import export functionality as it's platform-independent
 try:
